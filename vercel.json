@@ -1,7 +1,10 @@
 {
+  "buildCommand": "pnpm run build",
+  "installCommand": "pnpm install",
+  "outputDirectory": "dist",
   "functions": {
-    "api/replicate/**/*.ts": {
+    "api/replicate/[...replicate].ts": {
       "runtime": "edge"
     }
   }
-} 
+}

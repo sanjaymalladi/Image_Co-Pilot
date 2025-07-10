@@ -647,15 +647,15 @@ const App: React.FC = () => {
               <div className="space-y-6">
                   <h3 className="text-2xl font-semibold text-secondary text-center">Step 2: Review Analysis</h3>
                   <div className="bg-white p-5 rounded-lg shadow-md border border-slate-100">
-                      <h4 className="font-semibold text-sky-500 mb-2">Garment Analysis</h4>
+                      <h4 className="font-semibold text-secondary mb-2">Garment Analysis</h4>
                       <p className="text-slate-800 bg-slate-100 p-3 rounded-md whitespace-pre-wrap text-sm leading-relaxed pretty-scrollbar max-h-60 overflow-y-auto">{fashionPromptData.garmentAnalysis}</p>
                   </div>
                   <div className="bg-white p-5 rounded-lg shadow-md border border-slate-100">
-                      <h4 className="font-semibold text-sky-500 mb-2">QA Checklist</h4>
+                      <h4 className="font-semibold text-secondary mb-2">QA Checklist</h4>
                       <p className="text-slate-800 bg-slate-100 p-3 rounded-md whitespace-pre-wrap text-sm leading-relaxed pretty-scrollbar max-h-60 overflow-y-auto">{fashionPromptData.qaChecklist}</p>
                   </div>
                   <div className="bg-white p-5 rounded-lg shadow-md border border-slate-100">
-                      <h4 className="font-semibold text-sky-500 mb-2">Initial JSON Prompt</h4>
+                      <h4 className="font-semibold text-secondary mb-2">Initial JSON Prompt</h4>
                       <p className="text-slate-800 bg-slate-100 p-3 rounded-md whitespace-pre-wrap text-sm leading-relaxed pretty-scrollbar max-h-72 overflow-y-auto">{fashionPromptData.initialJsonPrompt}</p>
                       <div className="flex items-center gap-4 mt-4">
                         <Button onClick={copyInitialJsonPrompt} variant="secondary">
