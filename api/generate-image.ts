@@ -36,6 +36,7 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'prompt and aspect_ratio are required' });
   }
 
+  // Initialize Replicate with the correct type
   const replicate = new Replicate({ auth: token });
 
   // Ensure all images are URLs. Upload data-URLs to Replicate storage.
@@ -46,18 +47,23 @@ export default async function handler(req: any, res: any) {
       try {
         const base64 = img.split(',')[1];
         const buffer = Buffer.from(base64, 'base64');
-        const fileResp = await (replicate as any).files.create({ data: buffer });
-        processedUrls.push((fileResp as any).url);
+        // Fix: Use the correct method to create files
+        const fileResp = await replicate.files.create({ data: buffer });
+        processedUrls.push(fileResp.urls.get);
       } catch (err) {
         console.error('Failed to upload image to Replicate:', err);
+        throw err; // Important: Propagate the error
       }
     } else {
       processedUrls.push(img);
     }
   }
 
-  // If model requires at least one image, but none supplied, you could error.
-  // Here we just pass array (can be empty) to model.
+  // If no images were processed, return an error since the model requires them
+  if (processedUrls.length === 0) {
+    return res.status(400).json({ error: 'At least one valid input image is required' });
+  }
+
   const MODEL_NAME = 'flux-kontext-apps/multi-image-list';
 
   try {
@@ -65,11 +71,11 @@ export default async function handler(req: any, res: any) {
       input: {
         prompt,
         aspect_ratio,
-        input_images: processedUrls.length > 0 ? processedUrls : undefined,
+        input_images: processedUrls, // Always pass the array, even if empty
         output_format: 'png',
         safety_tolerance: 2,
       },
-    }) as any;
+    });
 
     // The replicate SDK waits until prediction finishes; prediction could be URL or array.
     let outputUrl: string | undefined;
