@@ -343,8 +343,11 @@ const App: React.FC = () => {
         
         const analysisData = await generateFashionAnalysisAndInitialJsonPrompt(garmentImageInputs, backgroundRefImageInputs.length > 0 ? backgroundRefImageInputs : undefined, modelRefImageInputs.length > 0 ? modelRefImageInputs : undefined);
 
-        // Step 2: Perform QA with original garment image as the QA image
-        const qaImageInput = await generateInitialQaImage(analysisData.initialJsonPrompt);
+        // Prepare data URLs once to reuse across calls
+        const garmentDataUrls = garmentImageInputs.map(img => `data:${img.mimeType};base64,${img.base64}`);
+
+        // Step 2: Perform QA with a REAL generated image that uses the garment references
+        const qaImageInput = await generateInitialQaImage(analysisData.initialJsonPrompt, garmentDataUrls);
         const finalPrompts = await performQaAndGenerateStudioPrompts(garmentImageInputs, qaImageInput, analysisData);
         
         const promptsToGenerate = finalPrompts
@@ -362,8 +365,7 @@ const App: React.FC = () => {
 
         // --- Step 3: Generate Images via Replicate multi-image workflow ---
 
-        // Convert garment images to data URLs for Replicate input
-        const garmentDataUrls = garmentImageInputs.map(img => `data:${img.mimeType};base64,${img.base64}`);
+        // garmentDataUrls were already prepared above
 
         // Identify the front-view prompt (fallback to first)
         const frontIndex = promptsToGenerate.findIndex(p => p.title.toLowerCase().includes('front'));
@@ -425,11 +427,15 @@ const App: React.FC = () => {
     setRefinedPrompts([]);
 
     try {
-        const qaImageInput = await generateInitialQaImage(fashionPromptData.initialJsonPrompt);
-        
+        // Prepare original garment inputs
         const originalGarmentImageInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
+        const garmentDataUrls = originalGarmentImageInputs.map(img => `data:${img.mimeType};base64,${img.base64}`);
+
+        // Generate a QA image using the garment references
+        const qaImageInput = await generateInitialQaImage(fashionPromptData.initialJsonPrompt, garmentDataUrls);
+
         const results = await performQaAndGenerateStudioPrompts(originalGarmentImageInputs, qaImageInput, fashionPromptData);
-        
+
         setRefinedPrompts(results.map(p => ({
             id: `${p.title.replace(/\s+/g, '-')}-${Date.now()}`,
             title: p.title,

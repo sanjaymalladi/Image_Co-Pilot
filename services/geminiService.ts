@@ -68,8 +68,18 @@ export const generateSingleImage = async (prompt: string, aspectRatio: string): 
   return await generateImageFromPrompt(prompt, aspectRatio);
 };
 
-export const generateInitialQaImage = async (prompt: string): Promise<ImageInput> => {
-  const imageUrl = await generateImageFromPrompt(prompt, '3:4');
+// Generate a QA image based on the initial prompt **using the original garment images as reference**
+// so the Replicate model has context.
+export const generateInitialQaImage = async (prompt: string, garmentDataUrls: string[]): Promise<ImageInput> => {
+  if (!garmentDataUrls || garmentDataUrls.length === 0) {
+    throw new Error("generateInitialQaImage requires at least one garment image data URL");
+  }
+
+  const imageUrl = await generateImageViaReplicate({
+    prompt,
+    aspect_ratio: '3:4',
+    input_images: garmentDataUrls,
+  });
 
   // If Replicate already returned a data URL, extract base64 directly; otherwise fetch & convert.
   if (imageUrl.startsWith('data:')) {
