@@ -345,7 +345,7 @@ const App: React.FC = () => {
 
         // Step 2: Perform QA with original garment image as the QA image
         const qaSeedImageInput = await generateInitialQaImage(analysisData.initialJsonPrompt);
-
+        //tring to do qa with the seed image
         const finalPrompts = await performQaAndGenerateStudioPrompts(
           garmentImageInputs,
           qaSeedImageInput,
