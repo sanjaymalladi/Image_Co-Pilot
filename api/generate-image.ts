@@ -46,8 +46,8 @@ export default async function handler(req: any, res: any) {
       try {
         const base64 = img.split(',')[1];
         const buffer = Buffer.from(base64, 'base64');
-        const file = await (replicate as any).files.create(buffer);
-        processedUrls.push(file.url);
+        const fileResp = await (replicate as any).files.create({ data: buffer });
+        processedUrls.push(fileResp.url);
       } catch (err) {
         console.error('Failed to upload image to Replicate:', err);
       }
