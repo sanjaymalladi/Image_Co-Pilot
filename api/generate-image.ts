@@ -36,24 +36,19 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'prompt and aspect_ratio are required' });
   }
 
-  // Initialize Replicate with the correct type
-  const replicate = new Replicate({ auth: token });
+  // Initialize Replicate with auth token
+  const replicate = new Replicate({
+    auth: token,
+  });
 
-  // Ensure all images are URLs. Upload data-URLs to Replicate storage.
+  // Ensure all images are URLs. For data URLs, we'll need to handle them differently
+  // since Replicate v0.25.2 doesn't have direct file upload support
   const processedUrls: string[] = [];
   for (const img of input_images) {
     if (!img) continue;
     if (img.startsWith('data:')) {
-      try {
-        const base64 = img.split(',')[1];
-        const buffer = Buffer.from(base64, 'base64');
-        // Fix: Use the correct method to create files
-        const fileResp = await replicate.files.create({ data: buffer });
-        processedUrls.push(fileResp.urls.get);
-      } catch (err) {
-        console.error('Failed to upload image to Replicate:', err);
-        throw err; // Important: Propagate the error
-      }
+      // For data URLs, we'll need to use them directly
+      processedUrls.push(img);
     } else {
       processedUrls.push(img);
     }
@@ -71,21 +66,18 @@ export default async function handler(req: any, res: any) {
       input: {
         prompt,
         aspect_ratio,
-        input_images: processedUrls, // Always pass the array, even if empty
+        input_images: processedUrls,
         output_format: 'png',
         safety_tolerance: 2,
       },
     });
 
-    // The replicate SDK waits until prediction finishes; prediction could be URL or array.
+    // Handle the prediction result
     let outputUrl: string | undefined;
     if (Array.isArray(prediction)) {
       outputUrl = prediction[0];
     } else if (typeof prediction === 'string') {
       outputUrl = prediction;
-    } else if (prediction?.output) {
-      if (Array.isArray(prediction.output)) outputUrl = prediction.output[0];
-      else if (typeof prediction.output === 'string') outputUrl = prediction.output;
     }
 
     if (!outputUrl) {
