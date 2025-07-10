@@ -18,7 +18,15 @@ export default async function handler(req: any, res: any) {
 
   let body: GenerateImageRequest;
   try {
-    body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    let rawBody: any = req.body;
+    if (Buffer.isBuffer(rawBody)) {
+      rawBody = rawBody.toString('utf8');
+    }
+    if (typeof rawBody === 'string') {
+      body = JSON.parse(rawBody);
+    } else {
+      body = rawBody as GenerateImageRequest;
+    }
   } catch (err) {
     return res.status(400).json({ error: 'Invalid JSON body' });
   }
@@ -38,7 +46,7 @@ export default async function handler(req: any, res: any) {
       try {
         const base64 = img.split(',')[1];
         const buffer = Buffer.from(base64, 'base64');
-        const file = await replicate.files.create(buffer);
+        const file = await (replicate as any).files.create(buffer);
         processedUrls.push(file.url);
       } catch (err) {
         console.error('Failed to upload image to Replicate:', err);
