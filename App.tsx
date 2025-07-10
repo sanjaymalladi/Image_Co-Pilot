@@ -7,7 +7,7 @@ import { fileToBase64WithType } from './utils/fileUtils';
 import { Button } from './components/Button';
 import { Spinner } from './components/Spinner';
 import { Alert } from './components/Alert';
-import { XCircleIcon, WandSparklesIcon, SparklesIcon, UploadIcon, ClipboardIcon, CheckIcon } from './components/Icons';
+import { XCircleIcon, WandSparklesIcon, SparklesIcon, UploadIcon, ClipboardIcon, CheckIcon, PlaceholderIcon } from './components/Icons';
 import { ShoppingBagIcon as GarmentIcon, PhotoIcon as BackgroundIcon, UserIcon as ModelIcon } from '@heroicons/react/24/outline';
 
 type WorkflowMode = 'simple' | 'advanced' | null;
@@ -543,7 +543,7 @@ const App: React.FC = () => {
                     <div className="aspect-[3/4] bg-slate-100 rounded flex items-center justify-center mb-2 overflow-hidden border border-slate-200">
                         {item.isLoadingImage && <Spinner className="w-8 h-8 text-sky-500" />}
                         {item.imageUrl && !item.isLoadingImage && <img src={item.imageUrl} onLoad={(e) => e.currentTarget.classList.remove('blur-lg')} alt={item.title} className="w-full h-full object-cover rounded blur-lg transition-all duration-700" />}
-                        {!item.imageUrl && !item.isLoadingImage && !item.error && <PhotoIcon className="w-12 h-12 text-slate-300" />}
+                        {!item.imageUrl && !item.isLoadingImage && !item.error && <PlaceholderIcon className="w-12 h-12 text-slate-300" />}
                         {item.error && !item.isLoadingImage && (
                             <div className="p-2 text-center">
                                 <XCircleIcon className="w-8 h-8 text-red-400 mx-auto mb-1" />
