@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/replicate/**/*.ts": {
+      "runtime": "edge"
+    }
+  }
+} 
