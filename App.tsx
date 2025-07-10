@@ -343,7 +343,7 @@ const App: React.FC = () => {
         
         const analysisData = await generateFashionAnalysisAndInitialJsonPrompt(garmentImageInputs, backgroundRefImageInputs.length > 0 ? backgroundRefImageInputs : undefined, modelRefImageInputs.length > 0 ? modelRefImageInputs : undefined);
 
-        // Step 2: Generate a REAL seed image via Replicate, then run QA
+        // Step 2: Perform QA with original garment image as the QA image
         const qaSeedImageInput = await generateInitialQaImage(analysisData.initialJsonPrompt);
 
         const finalPrompts = await performQaAndGenerateStudioPrompts(
@@ -420,95 +420,41 @@ const App: React.FC = () => {
     setIsLoading(false);
   };
 
-  // Add new handler for generating initial image
-  const handleGenerateInitialImage = async () => {
-    if (!fashionPromptData || fashionGarmentFiles.length === 0) {
-      setError("Missing data: Garment image(s) or initial analysis is missing.");
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Convert garment images to data URLs
-      const garmentImageInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
-      const backgroundRefImageInputs = await Promise.all(fashionBackgroundRefFiles.map(fileToBase64WithType));
-      const modelRefImageInputs = await Promise.all(fashionModelRefFiles.map(fileToBase64WithType));
-
-      const imagesForModel = [
-        ...garmentImageInputs,
-        ...(backgroundRefImageInputs.length > 0 ? backgroundRefImageInputs : []),
-        ...(modelRefImageInputs.length > 0 ? modelRefImageInputs : [])
-      ];
-
-      const imageUrl = await generateImageViaReplicate({
-        prompt: fashionPromptData.initialJsonPrompt,
-        aspect_ratio: '3:4',
-        input_images: imagesForModel,
-      });
-
-      // Create a File object from the generated image URL
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const file = new File([blob], 'generated-image.png', { type: 'image/png' });
-      
-      // Set the generated image file and preview URL
-      setGeneratedFashionImageFile(file);
-      setGeneratedFashionImagePreviewUrl(imageUrl);
-      
-      if (!firstImageUrl) setFirstImageUrl(imageUrl);
-    } catch (err: any) {
-      setError(err.message || "Failed to generate image");
-    }
-    setIsLoading(false);
-  };
-
-  // Update the handleAutoQa function to work with the generated image
   const handleAutoQa = async () => {
-    if (!fashionPromptData || !generatedFashionImageFile || fashionGarmentFiles.length === 0) {
-      setError("Missing data: Garment image(s), generated QA image, or initial analysis is missing.");
-      return;
+    if (!fashionPromptData) {
+        setError("Initial analysis data is missing.");
+        return;
     }
-
     setIsLoading(true);
     setError(null);
     setRefinedPrompts([]);
 
     try {
-      const garmentImageInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
-      const backgroundRefImageInputs = await Promise.all(fashionBackgroundRefFiles.map(fileToBase64WithType));
-      const modelRefImageInputs = await Promise.all(fashionModelRefFiles.map(fileToBase64WithType));
-      const generatedImageInput = await fileToBase64WithType(generatedFashionImageFile);
-
-      const results = await performQaAndGenerateStudioPrompts(
-        garmentImageInputs,
-        generatedImageInput,
-        fashionPromptData.initialJsonPrompt,
-        backgroundRefImageInputs.length > 0 ? backgroundRefImageInputs : undefined,
-        modelRefImageInputs.length > 0 ? modelRefImageInputs : undefined
-      );
-
-      setRefinedPrompts(results.map(item => ({
-        ...item,
-        isLoadingImage: false,
-        isCopied: false
-      })));
+        const qaImageInput = await generateInitialQaImage(fashionPromptData.initialJsonPrompt);
+        
+        const originalGarmentImageInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
+        const results = await performQaAndGenerateStudioPrompts(originalGarmentImageInputs, qaImageInput, fashionPromptData);
+        
+        setRefinedPrompts(results.map(p => ({
+            id: `${p.title.replace(/\s+/g, '-')}-${Date.now()}`,
+            title: p.title,
+            prompt: p.prompt,
+            isCopied: false,
+            isLoadingImage: false,
+            aspectRatio: '3:4'
+        })));
     } catch (err: any) {
-      setError(err.message || "Failed to perform QA and generate prompts");
-      setRefinedPrompts([]);
+        setError(err.message || "Failed to perform automated QA.");
+        setRefinedPrompts([]);
     }
     setIsLoading(false);
   };
 
-  const handleGenerateSingleImage = async () => {
-    if (!fashionPromptData || !generatedFashionImageFile || fashionGarmentFiles.length === 0) {
-      setError("Missing data: Garment image(s), generated QA image, or initial analysis is missing.");
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    setRefinedPrompts([]);
+  const handleGenerateSingleImage = async (itemId: string) => {
+    const promptItem = refinedPrompts.find(p => p.id === itemId);
+    if (!promptItem) return;
 
+    setRefinedPrompts(prev => prev.map(p => p.id === itemId ? { ...p, isLoadingImage: true, error: undefined, imageUrl: undefined } : p));
     try {
         // Convert garment images to data URLs
         const garmentInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
@@ -517,28 +463,17 @@ const App: React.FC = () => {
         const imagesForModel = firstImageUrl ? [...garmentDataUrls, firstImageUrl] : garmentDataUrls;
 
         const imageUrl = await generateImageViaReplicate({
-          prompt: fashionPromptData.initialJsonPrompt, // Use the initial prompt as the prompt for the single image
-          aspect_ratio: '3:4', // Default aspect ratio for single image
+          prompt: promptItem.prompt,
+          aspect_ratio: promptItem.aspectRatio,
           input_images: imagesForModel,
         });
 
         if (!firstImageUrl) setFirstImageUrl(imageUrl);
 
-        // Add the generated image to refinedPrompts for display
-        setRefinedPrompts(prev => [...prev, {
-          id: `generated-${Date.now()}`,
-          title: 'Generated Image',
-          prompt: fashionPromptData.initialJsonPrompt,
-          isCopied: false,
-          isLoadingImage: false,
-          aspectRatio: '3:4',
-          imageUrl: imageUrl
-        }]);
-
+        setRefinedPrompts(prev => prev.map(p => p.id === itemId ? { ...p, isLoadingImage: false, imageUrl } : p));
     } catch (err: any) {
-        setRefinedPrompts(prev => prev.map(p => p.id === 'generated-${Date.now()}' ? { ...p, isLoadingImage: false, error: err.message || 'Failed' } : p));
+        setRefinedPrompts(prev => prev.map(p => p.id === itemId ? { ...p, isLoadingImage: false, error: err.message || 'Failed' } : p));
     }
-    setIsLoading(false);
   };
 
   const handleAspectRatioChange = (itemId: string, newAspectRatio: string) => {
@@ -605,19 +540,18 @@ const App: React.FC = () => {
   };
 
   const handleGenerateSelectedPacks = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      if (selectedPacks.studio) {
-        await handleImagePackGeneration('studio');
-      }
-      if (selectedPacks.lifestyle) {
-        await handleImagePackGeneration('lifestyle');
-      }
-    } catch (err: any) {
-      setError(err.message || "Failed to generate selected packs");
+    if (!selectedPacks.studio && !selectedPacks.lifestyle) {
+      setError('Please select at least one pack type');
+      return;
     }
-    setIsLoading(false);
+
+    if (selectedPacks.studio && selectedPacks.lifestyle) {
+      await handleSimpleModeGeneration('all');
+    } else if (selectedPacks.studio) {
+      await handleSimpleModeGeneration('studio');
+    } else if (selectedPacks.lifestyle) {
+      await handleSimpleModeGeneration('lifestyle');
+    }
   };
 
   const renderFileUploadArea = (
@@ -662,67 +596,69 @@ const App: React.FC = () => {
   };
   
   const renderImageResultGrid = (items: RefinedPromptItem[]) => {
-    if (!items || items.length === 0) return null;
-
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-        {items.map((item) => (
-          <div key={item.id} className="bg-primary p-4 rounded-lg shadow-lg">
-            <h3 className="text-lg font-semibold mb-2 text-secondary">{item.title}</h3>
-            
-            {item.imageUrl && (
-              <div className="relative group">
-                <img
-                  src={item.imageUrl}
-                  alt={item.title}
-                  className="w-full h-auto rounded-lg mb-2"
-                />
-                <Button
-                  onClick={() => handleDownloadImage(item.imageUrl!, `${item.title.toLowerCase().replace(/\s+/g, '-')}.png`)}
-                  className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                  variant="primary"
-                  size="sm"
-                >
-                  <ArrowDownTrayIcon className="w-4 h-4" />
-                </Button>
-              </div>
-            )}
-
-            {item.isLoadingImage && (
-              <div className="flex items-center justify-center p-8">
-                <Spinner />
-              </div>
-            )}
-
-            {item.error && (
-              <div className="text-red-500 text-sm mb-2">{item.error}</div>
-            )}
-
-            <div className="flex items-center justify-between mt-2">
+      const displayItems = items.length > 0 ? items : Array(4).fill(null).map((_, i): RefinedPromptItem => ({ id: `placeholder-${i}`, title: 'Awaiting Generation...', prompt: '', isCopied: false, isLoadingImage: false, aspectRatio: '3:4' }));
+      
+      return (
+        <div className="space-y-4">
+          {items.length > 0 && (
+            <div className="flex justify-end">
               <Button
-                onClick={() => copyRefinedPrompt(item.id)}
+                onClick={handleDownloadAllImages}
                 variant="secondary"
                 size="sm"
-                className="flex-1 mr-2"
+                className="mb-2"
               >
-                {item.isCopied ? (
-                  <>
-                    <CheckIcon className="w-4 h-4" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <ClipboardIcon className="w-4 h-4" />
-                    Copy Prompt
-                  </>
-                )}
+                <ArrowDownTrayIcon className="w-4 h-4 mr-1" />
+                Download All Images
               </Button>
             </div>
+          )}
+          <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4`}>
+              {displayItems.map(item => (
+                  <div key={item.id} className="bg-white p-3 rounded-lg shadow-md border border-slate-100 flex flex-col justify-between">
+                      <h4 className="font-semibold text-slate-700 text-sm mb-2 truncate">{item.title}</h4>
+                      <div className="aspect-[3/4] bg-slate-100 rounded flex items-center justify-center mb-2 overflow-hidden border border-slate-200">
+                          {item.isLoadingImage && <Spinner className="w-8 h-8 text-sky-500" />}
+                          {item.imageUrl && !item.isLoadingImage && <img src={item.imageUrl} onLoad={(e) => e.currentTarget.classList.remove('blur-lg')} alt={item.title} className="w-full h-full object-cover rounded blur-lg transition-all duration-700" />}
+                          {!item.imageUrl && !item.isLoadingImage && !item.error && <PlaceholderIcon className="w-12 h-12 text-slate-300" />}
+                          {item.error && !item.isLoadingImage && (
+                              <div className="p-2 text-center">
+                                  <XCircleIcon className="w-8 h-8 text-red-400 mx-auto mb-1" />
+                                  <p className="text-xs text-red-600">{item.error}</p>
+                              </div>
+                          )}
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        {item.imageUrl && !item.isLoadingImage && (
+                          <Button 
+                            onClick={() => handleDownloadImage(item.imageUrl!, `${item.title.toLowerCase().replace(/\s+/g, '-')}.png`)}
+                            variant="secondary" 
+                            size="sm"
+                            className="w-full"
+                            aria-label={`Download ${item.title}`}
+                          >
+                            <ArrowDownTrayIcon className="w-4 h-4 mr-1" />
+                            Download
+                          </Button>
+                        )}
+                        <Button 
+                          onClick={() => copyRefinedPrompt(item.id)}
+                          variant="secondary" 
+                          size="sm"
+                          className="w-full"
+                          disabled={!item.prompt}
+                          aria-label={`Copy prompt for ${item.title} to clipboard`}
+                        >
+                          {item.isCopied ? <CheckIcon className="w-4 h-4 text-green-500" /> : <ClipboardIcon className="w-4 h-4" />}
+                          {item.isCopied ? 'Copied!' : 'Copy Prompt'}
+                        </Button>
+                      </div>
+                  </div>
+              ))}
           </div>
-        ))}
-      </div>
-    );
-  };
+        </div>
+      );
+  }
 
   const renderUploaders = () => (
     <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100 space-y-6">
@@ -763,105 +699,184 @@ const App: React.FC = () => {
 
         {error && <Alert type="error" message={error} onClose={() => setError(null)} />}
 
-        {/* Uploader is rendered within each workflow mode section to avoid duplication */}
+        {workflowMode && renderUploaders()}
 
-        {workflowMode === 'simple' && (
-          <div className="space-y-4">
-            {renderUploaders()}
-            
-            <div className="flex flex-col space-y-4 mt-4 items-center">
-              <div className="flex items-center space-x-4">
-                <label className="flex items-center space-x-2">
+        {workflowMode === 'simple' && fashionGarmentFiles.length > 0 && (
+          <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100 space-y-4">
+            <h3 className="text-lg font-semibold text-secondary text-center">Generate Image Pack</h3>
+            <p className="text-center text-sm text-slate-500">One click to get a full set of professional images.</p>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-center gap-8">
+                <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={selectedPacks.studio}
                     onChange={() => handlePackSelection('studio')}
-                    className="form-checkbox h-5 w-5 text-secondary"
+                    className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500"
                   />
-                  <span>Studio Pack</span>
+                  <span className="text-slate-700">Studio Pack (4 Images)</span>
                 </label>
-                <label className="flex items-center space-x-2">
+                <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={selectedPacks.lifestyle}
                     onChange={() => handlePackSelection('lifestyle')}
-                    className="form-checkbox h-5 w-5 text-secondary"
+                    className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500"
                   />
-                  <span>Lifestyle Pack</span>
+                  <span className="text-slate-700">Lifestyle Pack (4 Images)</span>
                 </label>
               </div>
-              
               <Button
                 onClick={handleGenerateSelectedPacks}
                 disabled={isLoading || (!selectedPacks.studio && !selectedPacks.lifestyle)}
                 className="w-full"
               >
-                {isLoading ? (
-                  <>
-                    <Spinner className="w-4 h-4" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <WandSparklesIcon className="w-5 h-5" />
-                    Generate Selected Images
-                  </>
-                )}
+                {isLoading ? <Spinner /> : <SparklesIcon className="w-5 h-5" />}
+                Generate Selected Images
               </Button>
-              
-              {refinedPrompts.length > 0 && (
-                <Button
-                  onClick={handleDownloadAllImages}
-                  variant="secondary"
-                  className="w-full"
-                >
-                  <ArrowDownTrayIcon className="w-5 h-5" />
-                  Download All Images
-                </Button>
-              )}
             </div>
-            
-            {error && <Alert variant="error" message={error} />}
+          </div>
+        )}
+
+        {workflowMode === 'simple' && (refinedPrompts.length > 0 || isLoading) && (
+          <div className="space-y-4">
+            <h3 className="text-xl font-semibold text-secondary text-center">Generated Images</h3>
             {renderImageResultGrid(refinedPrompts)}
           </div>
         )}
 
-        {workflowMode === 'advanced' && (
-          <div className="space-y-4">
-            {renderUploaders()}
-            
-            <div className="flex flex-col space-y-4">
-              <Button
-                onClick={handleGenerateInitialImage}
-                disabled={isLoading || fashionGarmentFiles.length === 0}
-              >
-                <WandSparklesIcon className="w-5 h-5" />
-                Generate Image
+        {workflowMode === 'advanced' && fashionGarmentFiles.length > 0 && (
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100">
+              <h3 className="text-lg font-semibold text-secondary text-center mb-4">Step 1: Analyze Garment</h3>
+              <Button onClick={handleGenerateFashionAnalysis} disabled={isLoading} className="w-full text-lg">
+                {isLoading && !fashionPromptData ? <Spinner /> : <SparklesIcon className="w-5 h-5"/>} Analyze & Generate Initial Prompt
               </Button>
-
-              {generatedFashionImagePreviewUrl && (
-                <Button
-                  onClick={handleAutoQa}
-                  disabled={isLoading}
-                >
-                  <SparklesIcon className="w-5 h-5" />
-                  Send to QA
-                </Button>
-              )}
-              
-              {refinedPrompts.length > 0 && (
-                <Button
-                  onClick={handleDownloadAllImages}
-                  variant="secondary"
-                >
-                  <ArrowDownTrayIcon className="w-5 h-5" />
-                  Download All Images
-                </Button>
-              )}
             </div>
+
+            {fashionPromptData && !isLoading && (
+              <div className="space-y-6">
+                  <h3 className="text-2xl font-semibold text-secondary text-center">Step 2: Review Analysis</h3>
+                  <div className="bg-white p-5 rounded-lg shadow-md border border-slate-100">
+                      <h4 className="font-semibold text-secondary mb-2">Garment Analysis</h4>
+                      <p className="text-slate-800 bg-slate-100 p-3 rounded-md whitespace-pre-wrap text-sm leading-relaxed pretty-scrollbar max-h-60 overflow-y-auto">{fashionPromptData.garmentAnalysis}</p>
+                  </div>
+                  <div className="bg-white p-5 rounded-lg shadow-md border border-slate-100">
+                      <h4 className="font-semibold text-secondary mb-2">QA Checklist</h4>
+                      <p className="text-slate-800 bg-slate-100 p-3 rounded-md whitespace-pre-wrap text-sm leading-relaxed pretty-scrollbar max-h-60 overflow-y-auto">{fashionPromptData.qaChecklist}</p>
+                  </div>
+                  <div className="bg-white p-5 rounded-lg shadow-md border border-slate-100">
+                      <h4 className="font-semibold text-secondary mb-2">Initial JSON Prompt</h4>
+                      <p className="text-slate-800 bg-slate-100 p-3 rounded-md whitespace-pre-wrap text-sm leading-relaxed pretty-scrollbar max-h-72 overflow-y-auto">{fashionPromptData.initialJsonPrompt}</p>
+                      <div className="flex items-center gap-4 mt-4">
+                        <Button onClick={copyInitialJsonPrompt} variant="secondary">
+                            {fashionInitialJsonPromptCopied ? <CheckIcon className="w-5 h-5 text-green-500" /> : <ClipboardIcon className="w-5 h-5" />}
+                            {fashionInitialJsonPromptCopied ? 'Copied!' : 'Copy Prompt'}
+                        </Button>
+                        <Button onClick={handleAutoQa} disabled={isLoading}>
+                            {isLoading && refinedPrompts.length === 0 ? <Spinner /> : <WandSparklesIcon className="w-5 h-5" />}
+                             Generate & Send to QA
+                        </Button>
+                      </div>
+                  </div>
+                  
+                  <div className="border-t-2 border-slate-200 pt-6 mt-8 space-y-6">
+                      <h3 className="text-2xl font-semibold text-secondary text-center">Step 3: QA & Final Prompt Generation</h3>
+                      <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100">
+                          <label htmlFor="qa-image-upload" className="block text-md font-medium text-sky-500 mb-3 text-center">Upload Generated Image (from Initial Prompt)</label>
+                          {generatedFashionImagePreviewUrl ? (
+                              <div className="text-center">
+                                  <img src={generatedFashionImagePreviewUrl} alt="QA preview" className="max-h-72 w-auto mx-auto rounded-md shadow-md mb-3" />
+                                  <Button variant="secondary" onClick={clearGeneratedFashionImage}><XCircleIcon className="w-4 h-4" /> Clear Image</Button>
+                              </div>
+                          ) : (
+                              <div onClick={() => document.getElementById('qa-image-upload')?.click()} className="border-2 border-dashed border-slate-300 hover:border-sky-500 rounded-lg p-8 text-center cursor-pointer max-w-md mx-auto">
+                                <input type="file" id="qa-image-upload" accept="image/*" onChange={handleGeneratedFashionImageFileChange} className="hidden" />
+                                <UploadIcon className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                                <p className="text-slate-500">Click or drag & drop QA image.</p>
+                              </div>
+                          )}
+                          <Button onClick={handleQaAndRefinePrompts} disabled={isLoading || !generatedFashionImageFile} className="w-full mt-6 text-lg">
+                              {isLoading && refinedPrompts.length === 0 ? <Spinner /> : <WandSparklesIcon className="w-5 h-5" />}
+                              Perform QA & Generate Final Prompts
+                          </Button>
+                      </div>
+                  </div>
+              </div>
+            )}
             
-            {error && <Alert variant="error" message={error} />}
-            {renderImageResultGrid(refinedPrompts)}
+            {refinedPrompts.length > 0 && !isLoading && (
+              <div className="border-t-2 border-slate-200 pt-6 mt-8 space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-3 rounded-lg shadow-md border border-slate-100">
+                    <h3 className="text-xl font-semibold text-secondary">Step 4: Generate Final Images</h3>
+                    <div className="flex items-center space-x-2">
+                        <span className={`text-sm font-medium ${isDevMode ? 'text-slate-500' : 'text-secondary'}`}>Images</span>
+                        <button onClick={() => setIsDevMode(!isDevMode)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isDevMode ? 'bg-slate-400' : 'bg-sky-600'}`}>
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isDevMode ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                        <span className={`text-sm font-medium ${isDevMode ? 'text-secondary' : 'text-slate-500'}`}>Prompts</span>
+                    </div>
+                </div>
+
+                {isDevMode ? (
+                  <div className="space-y-4">
+                    {refinedPrompts.map((item) => (
+                      <div key={item.id} className="bg-white p-5 rounded-lg shadow-md border border-slate-100">
+                        <div className="flex justify-between items-center mb-2">
+                          <h4 className="font-semibold text-sky-500">{item.title}</h4>
+                          {item.isLoadingImage && <Spinner className="w-5 h-5 text-sky-500"/>}
+                        </div>
+                        <p className="text-slate-800 bg-slate-100 p-3 rounded-md whitespace-pre-wrap text-sm pretty-scrollbar max-h-48 overflow-y-auto">{item.prompt}</p>
+                        <div className="flex items-center flex-wrap gap-4 mt-4">
+                            <Button onClick={() => copyRefinedPrompt(item.id)} variant="secondary" size="sm" disabled={item.isLoadingImage}>
+                               {item.isCopied ? <CheckIcon className="w-4 h-4 text-green-500"/> : <ClipboardIcon className="w-4 h-4" />} {item.isCopied ? 'Copied' : 'Copy'}
+                            </Button>
+                             <select
+                                value={item.aspectRatio}
+                                onChange={(e) => handleAspectRatioChange(item.id, e.target.value)}
+                                disabled={item.isLoadingImage}
+                                className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-sky-500 focus:border-sky-500 p-2 disabled:opacity-50"
+                                aria-label="Aspect Ratio"
+                            >
+                                <option value="3:4">3:4 (Portrait)</option>
+                                <option value="4:3">4:3 (Landscape)</option>
+                                <option value="1:1">1:1 (Square)</option>
+                                <option value="16:9">16:9 (Widescreen)</option>
+                                <option value="9:16">9:16 (Tall)</option>
+                            </select>
+                            <Button onClick={() => handleGenerateSingleImage(item.id)} size="sm" disabled={item.isLoadingImage}>
+                              {item.isLoadingImage ? <Spinner/> : <SparklesIcon className="w-4 h-4"/>} Generate Image
+                            </Button>
+                        </div>
+                        {item.imageUrl && !item.isLoadingImage && (
+                            <div className="mt-4">
+                                <img src={item.imageUrl} onLoad={(e) => e.currentTarget.classList.remove('blur-lg')} alt={`Generated: ${item.title}`} className="rounded-lg shadow-md border border-slate-200 max-w-xs mx-auto blur-lg transition-all duration-700" />
+                            </div>
+                        )}
+                         {item.error && !item.isLoadingImage && (
+                            <div className="mt-3 text-red-600 text-sm p-2 bg-red-50 rounded border border-red-200">{item.error}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="flex flex-col sm:flex-row gap-4 bg-white p-4 rounded-lg shadow-md border border-slate-100">
+                      <Button onClick={() => handleImagePackGeneration('studio')} disabled={isLoading} className="flex-1">
+                          {isLoading ? <Spinner/> : <SparklesIcon className="w-5 h-5"/>} Generate 4 Studio Images
+                      </Button>
+                      <Button onClick={() => handleImagePackGeneration('lifestyle')} disabled={isLoading} className="flex-1">
+                          {isLoading ? <Spinner/> : <SparklesIcon className="w-5 h-5"/>} Generate 4 Lifestyle Images
+                      </Button>
+                      <Button onClick={() => handleImagePackGeneration('all')} disabled={isLoading} variant="secondary" className="flex-1">
+                          {isLoading ? <Spinner/> : <SparklesIcon className="w-5 h-5"/>} Generate All 8 Images
+                      </Button>
+                    </div>
+                    {renderImageResultGrid(refinedPrompts)}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
