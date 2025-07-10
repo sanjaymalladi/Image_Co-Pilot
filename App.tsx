@@ -7,7 +7,7 @@ import { fileToBase64WithType } from './utils/fileUtils';
 import { Button } from './components/Button';
 import { Spinner } from './components/Spinner';
 import { Alert } from './components/Alert';
-import { XCircleIcon, WandSparklesIcon, SparklesIcon, UploadIcon, ClipboardIcon, CheckIcon, PlaceholderIcon } from './components/Icons';
+import { XCircleIcon, WandSparklesIcon, SparklesIcon, UploadIcon, ClipboardIcon, CheckIcon, PlaceholderIcon, ArrowDownTrayIcon } from './components/Icons';
 import { ShoppingBagIcon as GarmentIcon, PhotoIcon as BackgroundIcon, UserIcon as ModelIcon } from '@heroicons/react/24/outline';
 
 type WorkflowMode = 'simple' | 'advanced' | null;
@@ -53,6 +53,15 @@ const App: React.FC = () => {
 
   const [isDevMode, setIsDevMode] = useState<boolean>(false);
 
+  // Add new state for pack selection
+  const [selectedPacks, setSelectedPacks] = useState<{
+    studio: boolean;
+    lifestyle: boolean;
+  }>({
+    studio: false,
+    lifestyle: false
+  });
+
   const MAX_FILE_SIZE_MB = 4;
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
   const MAX_FILES_FASHION_PROMPT = 2;
@@ -75,6 +84,7 @@ const App: React.FC = () => {
     setRefinedPrompts([]);
     setIsDevMode(false);
     setFirstImageUrl(null);
+    setSelectedPacks({ studio: false, lifestyle: false });
   };
 
   const handleModeChange = (mode: WorkflowMode) => {
@@ -491,6 +501,54 @@ const App: React.FC = () => {
     }
   };
 
+  const handleDownloadImage = async (imageUrl: string, filename: string) => {
+    try {
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      setError('Failed to download image');
+    }
+  };
+
+  const handleDownloadAllImages = async () => {
+    const validImages = refinedPrompts.filter(item => item.imageUrl);
+    for (const item of validImages) {
+      if (item.imageUrl) {
+        await handleDownloadImage(item.imageUrl, `${item.title.toLowerCase().replace(/\s+/g, '-')}.png`);
+      }
+    }
+  };
+
+  const handlePackSelection = (pack: 'studio' | 'lifestyle') => {
+    setSelectedPacks(prev => ({
+      ...prev,
+      [pack]: !prev[pack]
+    }));
+  };
+
+  const handleGenerateSelectedPacks = async () => {
+    if (!selectedPacks.studio && !selectedPacks.lifestyle) {
+      setError('Please select at least one pack type');
+      return;
+    }
+
+    if (selectedPacks.studio && selectedPacks.lifestyle) {
+      await handleSimpleModeGeneration('all');
+    } else if (selectedPacks.studio) {
+      await handleSimpleModeGeneration('studio');
+    } else if (selectedPacks.lifestyle) {
+      await handleSimpleModeGeneration('lifestyle');
+    }
+  };
+
   const renderFileUploadArea = (
     areaType: 'garment' | 'backgroundRef' | 'modelRef',
     files: File[],
@@ -536,34 +594,63 @@ const App: React.FC = () => {
       const displayItems = items.length > 0 ? items : Array(4).fill(null).map((_, i): RefinedPromptItem => ({ id: `placeholder-${i}`, title: 'Awaiting Generation...', prompt: '', isCopied: false, isLoadingImage: false, aspectRatio: '3:4' }));
       
       return (
-        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4`}>
-            {displayItems.map(item => (
-                <div key={item.id} className="bg-white p-3 rounded-lg shadow-md border border-slate-100 flex flex-col justify-between">
-                    <h4 className="font-semibold text-slate-700 text-sm mb-2 truncate">{item.title}</h4>
-                    <div className="aspect-[3/4] bg-slate-100 rounded flex items-center justify-center mb-2 overflow-hidden border border-slate-200">
-                        {item.isLoadingImage && <Spinner className="w-8 h-8 text-sky-500" />}
-                        {item.imageUrl && !item.isLoadingImage && <img src={item.imageUrl} onLoad={(e) => e.currentTarget.classList.remove('blur-lg')} alt={item.title} className="w-full h-full object-cover rounded blur-lg transition-all duration-700" />}
-                        {!item.imageUrl && !item.isLoadingImage && !item.error && <PlaceholderIcon className="w-12 h-12 text-slate-300" />}
-                        {item.error && !item.isLoadingImage && (
-                            <div className="p-2 text-center">
-                                <XCircleIcon className="w-8 h-8 text-red-400 mx-auto mb-1" />
-                                <p className="text-xs text-red-600">{item.error}</p>
-                            </div>
+        <div className="space-y-4">
+          {items.length > 0 && (
+            <div className="flex justify-end">
+              <Button
+                onClick={handleDownloadAllImages}
+                variant="secondary"
+                size="sm"
+                className="mb-2"
+              >
+                <ArrowDownTrayIcon className="w-4 h-4 mr-1" />
+                Download All Images
+              </Button>
+            </div>
+          )}
+          <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4`}>
+              {displayItems.map(item => (
+                  <div key={item.id} className="bg-white p-3 rounded-lg shadow-md border border-slate-100 flex flex-col justify-between">
+                      <h4 className="font-semibold text-slate-700 text-sm mb-2 truncate">{item.title}</h4>
+                      <div className="aspect-[3/4] bg-slate-100 rounded flex items-center justify-center mb-2 overflow-hidden border border-slate-200">
+                          {item.isLoadingImage && <Spinner className="w-8 h-8 text-sky-500" />}
+                          {item.imageUrl && !item.isLoadingImage && <img src={item.imageUrl} onLoad={(e) => e.currentTarget.classList.remove('blur-lg')} alt={item.title} className="w-full h-full object-cover rounded blur-lg transition-all duration-700" />}
+                          {!item.imageUrl && !item.isLoadingImage && !item.error && <PlaceholderIcon className="w-12 h-12 text-slate-300" />}
+                          {item.error && !item.isLoadingImage && (
+                              <div className="p-2 text-center">
+                                  <XCircleIcon className="w-8 h-8 text-red-400 mx-auto mb-1" />
+                                  <p className="text-xs text-red-600">{item.error}</p>
+                              </div>
+                          )}
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        {item.imageUrl && !item.isLoadingImage && (
+                          <Button 
+                            onClick={() => handleDownloadImage(item.imageUrl!, `${item.title.toLowerCase().replace(/\s+/g, '-')}.png`)}
+                            variant="secondary" 
+                            size="sm"
+                            className="w-full"
+                            aria-label={`Download ${item.title}`}
+                          >
+                            <ArrowDownTrayIcon className="w-4 h-4 mr-1" />
+                            Download
+                          </Button>
                         )}
-                    </div>
-                     <Button 
-                        onClick={() => copyRefinedPrompt(item.id)}
-                        variant="secondary" 
-                        size="sm"
-                        className="w-full"
-                        disabled={!item.prompt}
-                        aria-label={`Copy prompt for ${item.title} to clipboard`}
-                    >
-                      {item.isCopied ? <CheckIcon className="w-4 h-4 text-green-500" /> : <ClipboardIcon className="w-4 h-4" />}
-                      {item.isCopied ? 'Copied!' : 'Copy Prompt'}
-                    </Button>
-                </div>
-            ))}
+                        <Button 
+                          onClick={() => copyRefinedPrompt(item.id)}
+                          variant="secondary" 
+                          size="sm"
+                          className="w-full"
+                          disabled={!item.prompt}
+                          aria-label={`Copy prompt for ${item.title} to clipboard`}
+                        >
+                          {item.isCopied ? <CheckIcon className="w-4 h-4 text-green-500" /> : <ClipboardIcon className="w-4 h-4" />}
+                          {item.isCopied ? 'Copied!' : 'Copy Prompt'}
+                        </Button>
+                      </div>
+                  </div>
+              ))}
+          </div>
         </div>
       );
   }
@@ -611,19 +698,38 @@ const App: React.FC = () => {
 
         {workflowMode === 'simple' && fashionGarmentFiles.length > 0 && (
           <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100 space-y-4">
-              <h3 className="text-lg font-semibold text-secondary text-center">Generate Image Pack</h3>
-              <p className="text-center text-sm text-slate-500">One click to get a full set of professional images.</p>
-              <div className="flex flex-col sm:flex-row gap-4 pt-2">
-                  <Button onClick={() => handleSimpleModeGeneration('studio')} disabled={isLoading} className="w-full">
-                      {isLoading ? <Spinner/> : <SparklesIcon className="w-5 h-5"/>} Generate 4 Studio Images
-                  </Button>
-                  <Button onClick={() => handleSimpleModeGeneration('lifestyle')} disabled={isLoading} className="w-full">
-                      {isLoading ? <Spinner/> : <SparklesIcon className="w-5 h-5"/>} Generate 4 Lifestyle Images
-                  </Button>
-                  <Button onClick={() => handleSimpleModeGeneration('all')} disabled={isLoading} className="w-full" variant="secondary">
-                      {isLoading ? <Spinner/> : <SparklesIcon className="w-5 h-5"/>} Generate All 8 Images
-                  </Button>
+            <h3 className="text-lg font-semibold text-secondary text-center">Generate Image Pack</h3>
+            <p className="text-center text-sm text-slate-500">One click to get a full set of professional images.</p>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-center gap-8">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedPacks.studio}
+                    onChange={() => handlePackSelection('studio')}
+                    className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500"
+                  />
+                  <span className="text-slate-700">Studio Pack (4 Images)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedPacks.lifestyle}
+                    onChange={() => handlePackSelection('lifestyle')}
+                    className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500"
+                  />
+                  <span className="text-slate-700">Lifestyle Pack (4 Images)</span>
+                </label>
               </div>
+              <Button
+                onClick={handleGenerateSelectedPacks}
+                disabled={isLoading || (!selectedPacks.studio && !selectedPacks.lifestyle)}
+                className="w-full"
+              >
+                {isLoading ? <Spinner /> : <SparklesIcon className="w-5 h-5" />}
+                Generate Selected Images
+              </Button>
+            </div>
           </div>
         )}
 
