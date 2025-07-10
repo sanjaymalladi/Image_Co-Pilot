@@ -344,13 +344,8 @@ const App: React.FC = () => {
         const analysisData = await generateFashionAnalysisAndInitialJsonPrompt(garmentImageInputs, backgroundRefImageInputs.length > 0 ? backgroundRefImageInputs : undefined, modelRefImageInputs.length > 0 ? modelRefImageInputs : undefined);
 
         // Step 2: Perform QA with original garment image as the QA image
-        const qaSeedImageInput = await generateInitialQaImage(analysisData.initialJsonPrompt);
-        //tring to do qa with the seed image
-        const finalPrompts = await performQaAndGenerateStudioPrompts(
-          garmentImageInputs,
-          qaSeedImageInput,
-          analysisData
-        );
+        const qaImageInput = await generateInitialQaImage(analysisData.initialJsonPrompt);
+        const finalPrompts = await performQaAndGenerateStudioPrompts(garmentImageInputs, qaImageInput, analysisData);
         
         const promptsToGenerate = finalPrompts
             .filter(p => packType === 'all' || p.title.toLowerCase().includes(packType))
@@ -450,30 +445,85 @@ const App: React.FC = () => {
     setIsLoading(false);
   };
 
-  const handleGenerateSingleImage = async (itemId: string) => {
-    const promptItem = refinedPrompts.find(p => p.id === itemId);
-    if (!promptItem) return;
+  const handleGenerateSingleImage = async (itemId?: string) => {
+    // --- Case 1: Generate image for a specific refined prompt item ---
+    if (itemId) {
+      if (fashionGarmentFiles.length === 0) {
+        setError("Please upload at least one garment image before generating.");
+        return;
+      }
 
-    setRefinedPrompts(prev => prev.map(p => p.id === itemId ? { ...p, isLoadingImage: true, error: undefined, imageUrl: undefined } : p));
-    try {
-        // Convert garment images to data URLs
+      const promptItem = refinedPrompts.find(p => p.id === itemId);
+      if (!promptItem) {
+        setError("Prompt not found.");
+        return;
+      }
+
+      // Mark this prompt as loading
+      setRefinedPrompts(prev => prev.map(p => p.id === itemId ? { ...p, isLoadingImage: true, error: undefined } : p));
+
+      try {
+        // Prepare garment images
         const garmentInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
         const garmentDataUrls = garmentInputs.map(img => `data:${img.mimeType};base64,${img.base64}`);
-
         const imagesForModel = firstImageUrl ? [...garmentDataUrls, firstImageUrl] : garmentDataUrls;
 
+        // Generate image via Replicate
         const imageUrl = await generateImageViaReplicate({
           prompt: promptItem.prompt,
           aspect_ratio: promptItem.aspectRatio,
           input_images: imagesForModel,
         });
 
+        // Save seed if not set yet
         if (!firstImageUrl) setFirstImageUrl(imageUrl);
 
+        // Update prompt item with generated image
         setRefinedPrompts(prev => prev.map(p => p.id === itemId ? { ...p, isLoadingImage: false, imageUrl } : p));
-    } catch (err: any) {
-        setRefinedPrompts(prev => prev.map(p => p.id === itemId ? { ...p, isLoadingImage: false, error: err.message || 'Failed' } : p));
+      } catch (err: any) {
+        setRefinedPrompts(prev => prev.map(p => p.id === itemId ? { ...p, isLoadingImage: false, error: err.message || 'Failed to generate image' } : p));
+      }
+
+      return; // Early exit so we don't run the original flow below
     }
+
+    // --- Case 2: Original single-image generation flow (initial JSON prompt) ---
+    if (!fashionPromptData || !generatedFashionImageFile || fashionGarmentFiles.length === 0) {
+      setError("Missing data: Garment image(s), generated QA image, or initial analysis is missing.");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    setRefinedPrompts([]);
+
+    try {
+      const garmentInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
+      const garmentDataUrls = garmentInputs.map(img => `data:${img.mimeType};base64,${img.base64}`);
+      const imagesForModel = firstImageUrl ? [...garmentDataUrls, firstImageUrl] : garmentDataUrls;
+
+      const imageUrl = await generateImageViaReplicate({
+        prompt: fashionPromptData.initialJsonPrompt,
+        aspect_ratio: '3:4',
+        input_images: imagesForModel,
+      });
+
+      if (!firstImageUrl) setFirstImageUrl(imageUrl);
+
+      setRefinedPrompts(prev => [...prev, {
+        id: `generated-${Date.now()}`,
+        title: 'Generated Image',
+        prompt: fashionPromptData.initialJsonPrompt,
+        isCopied: false,
+        isLoadingImage: false,
+        aspectRatio: '3:4',
+        imageUrl,
+      }]);
+    } catch (err: any) {
+      setError(err.message || "Failed to generate image.");
+    }
+
+    setIsLoading(false);
   };
 
   const handleAspectRatioChange = (itemId: string, newAspectRatio: string) => {
@@ -773,9 +823,13 @@ const App: React.FC = () => {
                             {fashionInitialJsonPromptCopied ? <CheckIcon className="w-5 h-5 text-green-500" /> : <ClipboardIcon className="w-5 h-5" />}
                             {fashionInitialJsonPromptCopied ? 'Copied!' : 'Copy Prompt'}
                         </Button>
-                        <Button onClick={handleAutoQa} disabled={isLoading}>
-                            {isLoading && refinedPrompts.length === 0 ? <Spinner /> : <WandSparklesIcon className="w-5 h-5" />}
-                             Generate & Send to QA
+                        <Button onClick={() => handleGenerateSingleImage()} disabled={isLoading}>
+                            {isLoading ? <Spinner /> : <SparklesIcon className="w-5 h-5" />}
+                            Generate Image
+                        </Button>
+                        <Button onClick={handleAutoQa} disabled={isLoading || !generatedFashionImagePreviewUrl} variant="secondary">
+                            {isLoading ? <Spinner /> : <WandSparklesIcon className="w-5 h-5" />}
+                            Send to QA
                         </Button>
                       </div>
                   </div>
