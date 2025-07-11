@@ -9,6 +9,7 @@ import { Spinner } from './components/Spinner';
 import { Alert } from './components/Alert';
 import { XCircleIcon, WandSparklesIcon, SparklesIcon, UploadIcon, ClipboardIcon, CheckIcon, PlaceholderIcon, ArrowDownTrayIcon } from './components/Icons';
 import { ShoppingBagIcon as GarmentIcon, PhotoIcon as BackgroundIcon, UserIcon as ModelIcon } from '@heroicons/react/24/outline';
+import { SignedIn, SignedOut, UserButton, SignInButton } from '@clerk/clerk-react';
 
 type WorkflowMode = 'simple' | 'advanced' | null;
 
@@ -697,17 +698,19 @@ const App: React.FC = () => {
                             Download
                           </Button>
                         )}
-                        <Button 
-                          onClick={() => copyRefinedPrompt(item.id)}
-                          variant="secondary" 
-                          size="sm"
-                          className="w-full"
-                          disabled={!item.prompt}
-                          aria-label={`Copy prompt for ${item.title} to clipboard`}
-                        >
-                          {item.isCopied ? <CheckIcon className="w-4 h-4 text-green-500" /> : <ClipboardIcon className="w-4 h-4" />}
-                          {item.isCopied ? 'Copied!' : 'Copy Prompt'}
-                        </Button>
+                        {workflowMode !== 'simple' && (
+                          <Button 
+                            onClick={() => copyRefinedPrompt(item.id)}
+                            variant="secondary" 
+                            size="sm"
+                            className="w-full"
+                            disabled={!item.prompt}
+                            aria-label={`Copy prompt for ${item.title} to clipboard`}
+                          >
+                            {item.isCopied ? <CheckIcon className="w-4 h-4 text-green-500" /> : <ClipboardIcon className="w-4 h-4" />} 
+                            {item.isCopied ? 'Copied!' : 'Copy Prompt'}
+                          </Button>
+                        )}
                       </div>
                   </div>
               ))}
@@ -734,16 +737,27 @@ const App: React.FC = () => {
         <a href="/" className="flex items-center gap-2">
           <img src="https://framerusercontent.com/images/Sn5VF1Si4Nr6jofjVzhOWDq5sGo.svg" alt="Logo" className="h-8 w-auto" />
         </a>
-        <div className="flex items-center gap-2">
-          <span className={`text-sm font-medium ${workflowMode === 'simple' ? 'text-secondary' : 'text-muted'}`}>Simple</span>
-          <button
-            onClick={() => handleModeChange(workflowMode === 'advanced' ? 'simple' : 'advanced')}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${workflowMode === 'advanced' ? 'bg-secondary' : 'bg-muted'}`}
-            aria-label="Toggle workflow mode"
-          >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${workflowMode === 'advanced' ? 'translate-x-6' : 'translate-x-1'}`} />
-          </button>
-          <span className={`text-sm font-medium ${workflowMode === 'advanced' ? 'text-secondary' : 'text-muted'}`}>Advanced</span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className={`text-sm font-medium ${workflowMode === 'simple' ? 'text-secondary' : 'text-muted'}`}>Simple</span>
+            <button
+              onClick={() => handleModeChange(workflowMode === 'advanced' ? 'simple' : 'advanced')}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${workflowMode === 'advanced' ? 'bg-secondary' : 'bg-muted'}`}
+              aria-label="Toggle workflow mode"
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${workflowMode === 'advanced' ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+            <span className={`text-sm font-medium ${workflowMode === 'advanced' ? 'text-secondary' : 'text-muted'}`}>Advanced</span>
+          </div>
+
+          <SignedOut>
+            <SignInButton mode="modal">
+              <Button variant="secondary" size="sm" className="ml-2">Sign in</Button>
+            </SignInButton>
+          </SignedOut>
+          <SignedIn>
+            <UserButton afterSignOutUrl="/" />
+          </SignedIn>
         </div>
       </nav>
 
