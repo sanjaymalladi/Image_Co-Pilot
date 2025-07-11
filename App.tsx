@@ -10,6 +10,9 @@ import { Alert } from './components/Alert';
 import { XCircleIcon, WandSparklesIcon, SparklesIcon, UploadIcon, ClipboardIcon, CheckIcon, PlaceholderIcon, ArrowDownTrayIcon } from './components/Icons';
 import { ShoppingBagIcon as GarmentIcon, PhotoIcon as BackgroundIcon, UserIcon as ModelIcon } from '@heroicons/react/24/outline';
 import { SignedIn, SignedOut, UserButton, SignInButton } from '@clerk/clerk-react';
+import { useHistory } from './utils/history';
+import { HistoryModal } from './components/HistoryModal';
+import { usePersistImage } from './utils/persistImage';
 
 type WorkflowMode = 'simple' | 'advanced' | null;
 
@@ -611,6 +614,10 @@ const App: React.FC = () => {
     }
   };
 
+  const { addHistory } = useHistory();
+  const [showHistory, setShowHistory] = useState(false);
+  const { persistImage } = usePersistImage();
+
   const renderFileUploadArea = (
     areaType: 'garment' | 'backgroundRef' | 'modelRef',
     files: File[],
@@ -757,6 +764,11 @@ const App: React.FC = () => {
           </SignedOut>
           <SignedIn>
             <UserButton afterSignOutUrl="/" />
+            {workflowMode === 'simple' && (
+              <Button variant="secondary" size="sm" onClick={() => setShowHistory(true)} className="ml-2">
+                My History
+              </Button>
+            )}
           </SignedIn>
         </div>
       </nav>
@@ -806,7 +818,7 @@ const App: React.FC = () => {
               </Button>
             </div>
           </div>
-        )}
+        )} {/* end Simple-mode pack */}
 
         {workflowMode === 'simple' && (refinedPrompts.length > 0 || isLoading) && (
           <div className="space-y-4">
@@ -954,6 +966,8 @@ const App: React.FC = () => {
           </div>
         )}
       </div>
+
+      <HistoryModal open={showHistory} onClose={() => setShowHistory(false)} />
 
       <style>{`
         .pretty-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
