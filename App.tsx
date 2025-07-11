@@ -384,8 +384,11 @@ const App: React.FC = () => {
             aspect_ratio: frontPromptItem.aspectRatio,
             input_images: garmentDataUrls,
           });
-          setFirstImageUrl(seedImageUrl);
-          setRefinedPrompts(prev => prev.map(p => p.id === frontPromptId ? { ...p, isLoadingImage: false, imageUrl: seedImageUrl } : p));
+          // Persist to Supabase and store history
+          const savedSeedUrl = await persistImage(seedImageUrl);
+          setFirstImageUrl(savedSeedUrl);
+          setRefinedPrompts(prev => prev.map(p => p.id === frontPromptId ? { ...p, isLoadingImage: false, imageUrl: savedSeedUrl } : p));
+          await addHistory('image_generated', { url: savedSeedUrl, title: frontPromptItem.title, aspectRatio: frontPromptItem.aspectRatio });
         } catch (err: any) {
           setRefinedPrompts(prev => prev.map(p => p.id === frontPromptId ? { ...p, isLoadingImage: false, error: err.message || 'Failed' } : p));
           throw err;
@@ -395,12 +398,14 @@ const App: React.FC = () => {
         const remaining: RefinedPromptItem[] = promptsToGenerate.filter(p => p.id !== frontPromptId);
         const remainingPromises: Promise<{id: string; imageUrl?: string; error?: string}>[] = remaining.map(async (p: RefinedPromptItem) => {
           try {
-            const imgUrl = await generateImageViaReplicate({
+            const replicateUrl = await generateImageViaReplicate({
               prompt: p.prompt,
               aspect_ratio: p.aspectRatio,
               input_images: [...garmentDataUrls, seedImageUrl],
             });
-            return { id: p.id, imageUrl: imgUrl } as const;
+            const finalUrl = await persistImage(replicateUrl);
+            await addHistory('image_generated', { url: finalUrl, title: p.title, aspectRatio: p.aspectRatio });
+            return { id: p.id, imageUrl: finalUrl } as const;
           } catch (err: any) {
             return { id: p.id, error: err.message || 'Failed' } as const;
           }
