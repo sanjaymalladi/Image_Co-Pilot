@@ -20,7 +20,7 @@ export function useSupabase() {
         persistSession: false,
         autoRefreshToken: false,
         detectSessionInUrl: false,
-        accessToken: () => session?.getToken(),
+        accessToken: () => session?.getToken({ template: 'supabase' }),
       },
     });
   }, [session?.id]);
