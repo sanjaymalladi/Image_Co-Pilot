@@ -819,6 +819,23 @@ const App: React.FC = () => {
 
   const [showHistory, setShowHistory] = useState(false);
 
+  const handleDownloadConvexImage = async (fileId: string, filename: string) => {
+    try {
+      const url = await convex.mutation(api.files.getFileUrl, { fileId });
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(link.href);
+    } catch (error) {
+      setError('Failed to download image');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col items-center p-4 md:p-8 selection:bg-sky-500 selection:text-white">
       {/* Navbar */}
@@ -1091,6 +1108,12 @@ const App: React.FC = () => {
                       <div key={idx} className="text-center">
                         <ConvexImage fileId={img.imageId} alt={img.title} />
                         <p className="text-xs mt-1">{img.title}</p>
+                        <button
+                          onClick={() => handleDownloadConvexImage(img.imageId, `${img.title.replace(/\s+/g, '_')}.png`)}
+                          className="mt-1 px-2 py-1 bg-sky-100 text-sky-700 rounded text-xs hover:bg-sky-200 transition"
+                        >
+                          Download
+                        </button>
                       </div>
                     ))}
                   </div>
