@@ -382,8 +382,8 @@ const App: React.FC = () => {
   // Refactored simple mode generation with Convex history
   const handleSimpleModeGeneration = async (packType: 'studio' | 'lifestyle' | 'all') => {
     if (fashionGarmentFiles.length === 0) {
-      setError(`Please upload 1 or ${MAX_FILES_FASHION_PROMPT} garment image(s).`);
-      return;
+        setError(`Please upload 1 or ${MAX_FILES_FASHION_PROMPT} garment image(s).`);
+        return;
     }
     setIsLoading(true);
     setError(null);
@@ -398,9 +398,9 @@ const App: React.FC = () => {
       }
 
       // Step 2: Analyze Garment (Hidden)
-      const garmentImageInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
-      const backgroundRefImageInputs = await Promise.all(fashionBackgroundRefFiles.map(fileToBase64WithType));
-      const modelRefImageInputs = await Promise.all(fashionModelRefFiles.map(fileToBase64WithType));
+        const garmentImageInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
+        const backgroundRefImageInputs = await Promise.all(fashionBackgroundRefFiles.map(fileToBase64WithType));
+        const modelRefImageInputs = await Promise.all(fashionModelRefFiles.map(fileToBase64WithType));
       const analysisData = await generateFashionAnalysisAndInitialJsonPrompt(
         garmentImageInputs,
         backgroundRefImageInputs.length > 0 ? backgroundRefImageInputs : undefined,
@@ -420,17 +420,17 @@ const App: React.FC = () => {
       // Step 4: Generate prompts
       const qaImageInput = await generateInitialQaImage(analysisData.initialJsonPrompt, garmentDataUrls);
       const finalPrompts = await performQaAndGenerateStudioPrompts(garmentImageInputs, qaImageInput, analysisData);
-      const promptsToGenerate = finalPrompts
-        .filter(p => packType === 'all' || p.title.toLowerCase().includes(packType))
-        .map(p => ({
-          id: `${p.title.replace(/\s+/g, '-')}-${Date.now()}`,
-          title: p.title,
-          prompt: p.prompt,
-          isCopied: false,
-          isLoadingImage: true,
-          aspectRatio: '3:4',
-        }));
-      setRefinedPrompts(promptsToGenerate);
+        const promptsToGenerate = finalPrompts
+            .filter(p => packType === 'all' || p.title.toLowerCase().includes(packType))
+            .map(p => ({
+                id: `${p.title.replace(/\s+/g, '-')}-${Date.now()}`,
+                title: p.title,
+                prompt: p.prompt,
+                isCopied: false,
+                isLoadingImage: true,
+                aspectRatio: '3:4',
+            }));
+        setRefinedPrompts(promptsToGenerate);
 
       // Step 5: Generate and upload images to Convex, update generation record
       // Identify the front-view prompt (fallback to first)
@@ -485,16 +485,16 @@ const App: React.FC = () => {
         }
       });
       const remainingResults: {id: string; imageUrl?: string; error?: string; storageId?: string}[] = await Promise.all(remainingPromises);
-      setRefinedPrompts(prev => prev.map(p => {
+        setRefinedPrompts(prev => prev.map(p => {
         const res = remainingResults.find(r => r.id === p.id);
         if (!res) return p;
         return { ...p, isLoadingImage: false, imageUrl: (res as any).imageUrl, error: (res as any).error };
-      }));
+        }));
 
       // Step 6: Mark generation as completed
       await markCompleted({ generationId });
     } catch (err: any) {
-      setError(err.message || "Failed to generate fashion image pack.");
+        setError(err.message || "Failed to generate fashion image pack.");
     }
     setIsLoading(false);
   };
@@ -867,14 +867,14 @@ const App: React.FC = () => {
             </SignInButton>
           </Unauthenticated>
           {/* History Button */}
-          <button
+            <button
             onClick={() => setShowHistory(true)}
             className="ml-2 px-4 py-2 bg-slate-100 text-slate-800 rounded hover:bg-slate-200 border border-slate-200 transition"
             aria-label="Show Generation History"
           >
             History
-          </button>
-        </div>
+            </button>
+          </div>
       </nav>
 
       <div className="w-full max-w-6xl space-y-8">
@@ -1124,7 +1124,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <style>{`
+       <style>{`
         .pretty-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
         .pretty-scrollbar::-webkit-scrollbar-track { background: rgba(209, 213, 219, 0.5); border-radius: 3px; }
         .pretty-scrollbar::-webkit-scrollbar-thumb { background: #38bdf8; border-radius: 3px; }
