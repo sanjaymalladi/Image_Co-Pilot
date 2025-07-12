@@ -10,6 +10,30 @@ import { Alert } from './components/Alert';
 import { XCircleIcon, WandSparklesIcon, SparklesIcon, UploadIcon, ClipboardIcon, CheckIcon, PlaceholderIcon, ArrowDownTrayIcon } from './components/Icons';
 import { ShoppingBagIcon as GarmentIcon, PhotoIcon as BackgroundIcon, UserIcon as ModelIcon } from '@heroicons/react/24/outline';
 import { SignedIn, SignedOut, UserButton, SignInButton } from '@clerk/clerk-react';
+import { useMutation, useQuery, useConvex } from "convex/react";
+import { api } from "./convex/_generated/api";
+import { Authenticated, Unauthenticated } from "convex/react";
+
+const ConvexImage: React.FC<{ fileId: string; alt: string }> = ({ fileId, alt }) => {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const convex = useConvex();
+
+  useEffect(() => {
+    const getUrl = async () => {
+      try {
+        const url = await convex.mutation(api.files.getFileUrl, { fileId });
+        setImageUrl(url);
+      } catch (error) {
+        console.error('Failed to get image URL:', error);
+      }
+    };
+    getUrl();
+  }, [fileId, convex]);
+
+  if (!imageUrl) return <div className="bg-gray-200 w-full h-32 flex items-center justify-center">Loading...</div>;
+
+  return <img src={imageUrl} alt={alt} className="w-full h-32 object-cover rounded" />;
+};
 
 type WorkflowMode = 'simple' | 'advanced' | null;
 
@@ -327,99 +351,151 @@ const App: React.FC = () => {
     setIsLoading(false);
   };
   
+  const convex = useConvex();
+
+  // Helper to upload a File to Convex storage and return the storageId
+  const uploadFileToConvex = async (file: File): Promise<string> => {
+    const uploadUrl = await convex.mutation(api.files.generateUploadUrl, {});
+    const response = await fetch(uploadUrl, {
+      method: "POST",
+      headers: { "Content-Type": file.type },
+      body: file,
+    });
+    const { storageId } = await response.json();
+    return storageId;
+  };
+
+  // Helper to upload an image from a URL to Convex storage
+  const uploadImageUrlToConvex = async (imageUrl: string): Promise<string> => {
+    const response = await fetch(imageUrl);
+    const blob = await response.blob();
+    const uploadUrl = await convex.mutation(api.files.generateUploadUrl, {});
+    const uploadResponse = await fetch(uploadUrl, {
+      method: "POST",
+      headers: { "Content-Type": blob.type },
+      body: blob,
+    });
+    const { storageId } = await uploadResponse.json();
+    return storageId;
+  };
+
+  // Refactored simple mode generation with Convex history
   const handleSimpleModeGeneration = async (packType: 'studio' | 'lifestyle' | 'all') => {
     if (fashionGarmentFiles.length === 0) {
-        setError(`Please upload 1 or ${MAX_FILES_FASHION_PROMPT} garment image(s).`);
-        return;
+      setError(`Please upload 1 or ${MAX_FILES_FASHION_PROMPT} garment image(s).`);
+      return;
     }
     setIsLoading(true);
     setError(null);
     setRefinedPrompts([]);
 
     try {
-        // Step 1: Analyze Garment (Hidden)
-        const garmentImageInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
-        const backgroundRefImageInputs = await Promise.all(fashionBackgroundRefFiles.map(fileToBase64WithType));
-        const modelRefImageInputs = await Promise.all(fashionModelRefFiles.map(fileToBase64WithType));
-        
-        const analysisData = await generateFashionAnalysisAndInitialJsonPrompt(garmentImageInputs, backgroundRefImageInputs.length > 0 ? backgroundRefImageInputs : undefined, modelRefImageInputs.length > 0 ? modelRefImageInputs : undefined);
+      // Step 1: Upload garment images to Convex
+      const garmentFileIds: string[] = [];
+      for (const file of fashionGarmentFiles) {
+        const storageId = await uploadFileToConvex(file);
+        garmentFileIds.push(storageId);
+      }
 
-        // Prepare data URLs once to reuse across calls
-        const garmentDataUrls = garmentImageInputs.map(img => `data:${img.mimeType};base64,${img.base64}`);
+      // Step 2: Analyze Garment (Hidden)
+      const garmentImageInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
+      const backgroundRefImageInputs = await Promise.all(fashionBackgroundRefFiles.map(fileToBase64WithType));
+      const modelRefImageInputs = await Promise.all(fashionModelRefFiles.map(fileToBase64WithType));
+      const analysisData = await generateFashionAnalysisAndInitialJsonPrompt(
+        garmentImageInputs,
+        backgroundRefImageInputs.length > 0 ? backgroundRefImageInputs : undefined,
+        modelRefImageInputs.length > 0 ? modelRefImageInputs : undefined
+      );
+      const garmentDataUrls = garmentImageInputs.map(img => `data:${img.mimeType};base64,${img.base64}`);
 
-        // Step 2: Perform QA with a REAL generated image that uses the garment references
-        const qaImageInput = await generateInitialQaImage(analysisData.initialJsonPrompt, garmentDataUrls);
-        const finalPrompts = await performQaAndGenerateStudioPrompts(garmentImageInputs, qaImageInput, analysisData);
-        
-        const promptsToGenerate = finalPrompts
-            .filter(p => packType === 'all' || p.title.toLowerCase().includes(packType))
-            .map(p => ({
-                id: `${p.title.replace(/\s+/g, '-')}-${Date.now()}`,
-                title: p.title,
-                prompt: p.prompt,
-                isCopied: false,
-                isLoadingImage: true,
-                aspectRatio: '3:4',
-            }));
-        
-        setRefinedPrompts(promptsToGenerate);
+      // Step 3: Create generation record in Convex
+      const generationId = await createGeneration({
+        generationType: "simple",
+        garmentImages: garmentFileIds,
+        garmentAnalysis: analysisData.garmentAnalysis,
+        qaChecklist: analysisData.qaChecklist,
+        initialJsonPrompt: analysisData.initialJsonPrompt,
+      });
 
-        // --- Step 3: Generate Images via Replicate multi-image workflow ---
-
-        // garmentDataUrls were already prepared above
-
-        // Identify the front-view prompt (fallback to first)
-        const frontIndex = promptsToGenerate.findIndex(p => p.title.toLowerCase().includes('front'));
-        const frontPromptId = frontIndex !== -1 ? promptsToGenerate[frontIndex].id : promptsToGenerate[0].id;
-        const frontPromptItem = promptsToGenerate.find(p => p.id === frontPromptId)!;
-
-        // Generate the seed/front image
-        let seedImageUrl: string;
-        try {
-          seedImageUrl = await generateImageViaReplicate({
-            prompt: frontPromptItem.prompt,
-            aspect_ratio: frontPromptItem.aspectRatio,
-            input_images: garmentDataUrls,
-          });
-          // Persist to Supabase and store history
-          // const savedSeedUrl = await persistImage(seedImageUrl); // Removed persistImage
-          setFirstImageUrl(seedImageUrl);
-          setRefinedPrompts(prev => prev.map(p => p.id === frontPromptId ? { ...p, isLoadingImage: false, imageUrl: seedImageUrl } : p));
-          // await addHistory('image_generated', { url: savedSeedUrl, title: frontPromptItem.title, aspectRatio: frontPromptItem.aspectRatio }); // Removed addHistory
-        } catch (err: any) {
-          setRefinedPrompts(prev => prev.map(p => p.id === frontPromptId ? { ...p, isLoadingImage: false, error: err.message || 'Failed' } : p));
-          throw err;
-        }
-
-        // Generate remaining images in parallel using garment + seed references
-        const remaining: RefinedPromptItem[] = promptsToGenerate.filter(p => p.id !== frontPromptId);
-        const remainingPromises: Promise<{id: string; imageUrl?: string; error?: string}>[] = remaining.map(async (p: RefinedPromptItem) => {
-          try {
-            const replicateUrl = await generateImageViaReplicate({
-              prompt: p.prompt,
-              aspect_ratio: p.aspectRatio,
-              input_images: [...garmentDataUrls, seedImageUrl],
-            });
-            // const finalUrl = await persistImage(replicateUrl); // Removed persistImage
-            // await addHistory('image_generated', { url: finalUrl, title: p.title, aspectRatio: p.aspectRatio }); // Removed addHistory
-            return { id: p.id, imageUrl: replicateUrl } as const;
-          } catch (err: any) {
-            return { id: p.id, error: err.message || 'Failed' } as const;
-          }
-        });
-
-        const remainingResults: {id: string; imageUrl?: string; error?: string}[] = await Promise.all(remainingPromises);
-
-        setRefinedPrompts(prev => prev.map(p => {
-          const res = remainingResults.find(r => r.id === p.id);
-          if (!res) return p;
-          return { ...p, isLoadingImage: false, imageUrl: (res as any).imageUrl, error: (res as any).error };
+      // Step 4: Generate prompts
+      const qaImageInput = await generateInitialQaImage(analysisData.initialJsonPrompt, garmentDataUrls);
+      const finalPrompts = await performQaAndGenerateStudioPrompts(garmentImageInputs, qaImageInput, analysisData);
+      const promptsToGenerate = finalPrompts
+        .filter(p => packType === 'all' || p.title.toLowerCase().includes(packType))
+        .map(p => ({
+          id: `${p.title.replace(/\s+/g, '-')}-${Date.now()}`,
+          title: p.title,
+          prompt: p.prompt,
+          isCopied: false,
+          isLoadingImage: true,
+          aspectRatio: '3:4',
         }));
+      setRefinedPrompts(promptsToGenerate);
 
+      // Step 5: Generate and upload images to Convex, update generation record
+      // Identify the front-view prompt (fallback to first)
+      const frontIndex = promptsToGenerate.findIndex(p => p.title.toLowerCase().includes('front'));
+      const frontPromptId = frontIndex !== -1 ? promptsToGenerate[frontIndex].id : promptsToGenerate[0].id;
+      const frontPromptItem = promptsToGenerate.find(p => p.id === frontPromptId)!;
+
+      // Generate the seed/front image
+      let seedImageUrl: string;
+      let seedImageStorageId: string;
+      try {
+        seedImageUrl = await generateImageViaReplicate({
+          prompt: frontPromptItem.prompt,
+          aspect_ratio: frontPromptItem.aspectRatio,
+          input_images: garmentDataUrls,
+        });
+        seedImageStorageId = await uploadImageUrlToConvex(seedImageUrl);
+        setFirstImageUrl(seedImageUrl);
+        setRefinedPrompts(prev => prev.map(p => p.id === frontPromptId ? { ...p, isLoadingImage: false, imageUrl: seedImageUrl } : p));
+        await addGeneratedImage({
+          generationId,
+          title: frontPromptItem.title,
+          prompt: frontPromptItem.prompt,
+          imageId: seedImageStorageId,
+          aspectRatio: frontPromptItem.aspectRatio,
+        });
+      } catch (err: any) {
+        setRefinedPrompts(prev => prev.map(p => p.id === frontPromptId ? { ...p, isLoadingImage: false, error: err.message || 'Failed' } : p));
+        throw err;
+      }
+
+      // Generate remaining images in parallel using garment + seed references
+      const remaining: RefinedPromptItem[] = promptsToGenerate.filter(p => p.id !== frontPromptId);
+      const remainingPromises: Promise<{id: string; imageUrl?: string; error?: string; storageId?: string}>[] = remaining.map(async (p: RefinedPromptItem) => {
+        try {
+          const replicateUrl = await generateImageViaReplicate({
+            prompt: p.prompt,
+            aspect_ratio: p.aspectRatio,
+            input_images: [...garmentDataUrls, seedImageUrl],
+          });
+          const storageId = await uploadImageUrlToConvex(replicateUrl);
+          await addGeneratedImage({
+            generationId,
+            title: p.title,
+            prompt: p.prompt,
+            imageId: storageId,
+            aspectRatio: p.aspectRatio,
+          });
+          return { id: p.id, imageUrl: replicateUrl, storageId } as const;
+        } catch (err: any) {
+          return { id: p.id, error: err.message || 'Failed' } as const;
+        }
+      });
+      const remainingResults: {id: string; imageUrl?: string; error?: string; storageId?: string}[] = await Promise.all(remainingPromises);
+      setRefinedPrompts(prev => prev.map(p => {
+        const res = remainingResults.find(r => r.id === p.id);
+        if (!res) return p;
+        return { ...p, isLoadingImage: false, imageUrl: (res as any).imageUrl, error: (res as any).error };
+      }));
+
+      // Step 6: Mark generation as completed
+      await markCompleted({ generationId });
     } catch (err: any) {
-        setError(err.message || "Failed to generate fashion image pack.");
+      setError(err.message || "Failed to generate fashion image pack.");
     }
-    
     setIsLoading(false);
   };
 
@@ -735,6 +811,14 @@ const App: React.FC = () => {
     </div>
   );
 
+  // Convex hooks for history
+  const createGeneration = useMutation(api.generations.createGeneration);
+  const addGeneratedImage = useMutation(api.generations.addGeneratedImage);
+  const markCompleted = useMutation(api.generations.markGenerationCompleted);
+  const userGenerations = useQuery(api.generations.getUserGenerations, { limit: 20 });
+
+  const [showHistory, setShowHistory] = useState(false);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col items-center p-4 md:p-8 selection:bg-sky-500 selection:text-white">
       {/* Navbar */}
@@ -754,16 +838,26 @@ const App: React.FC = () => {
             </button>
             <span className={`text-sm font-medium ${workflowMode === 'advanced' ? 'text-secondary' : 'text-muted'}`}>Advanced</span>
           </div>
-
-          <SignedOut>
-            <SignInButton mode="modal">
-              <Button variant="secondary" size="sm" className="ml-2">Sign in</Button>
-            </SignInButton>
-          </SignedOut>
-          <SignedIn>
+          {/* Auth buttons */}
+          <Authenticated>
             <UserButton afterSignOutUrl="/" />
-          </SignedIn>
-          </div>
+          </Authenticated>
+          <Unauthenticated>
+            <SignInButton mode="modal">
+              <button className="ml-2 px-4 py-2 bg-sky-600 text-white rounded hover:bg-sky-700 transition">
+                Sign in
+              </button>
+            </SignInButton>
+          </Unauthenticated>
+          {/* History Button */}
+          <button
+            onClick={() => setShowHistory(true)}
+            className="ml-2 px-4 py-2 bg-slate-100 text-slate-800 rounded hover:bg-slate-200 border border-slate-200 transition"
+            aria-label="Show Generation History"
+          >
+            History
+          </button>
+        </div>
       </nav>
 
       <div className="w-full max-w-6xl space-y-8">
@@ -959,6 +1053,53 @@ const App: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Generation History Modal */}
+      {showHistory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full p-6 relative">
+            <button
+              onClick={() => setShowHistory(false)}
+              className="absolute top-2 right-2 text-slate-400 hover:text-slate-600 text-2xl font-bold"
+              aria-label="Close History"
+            >
+              ×
+            </button>
+            <h3 className="text-lg font-semibold text-secondary mb-2">Generation History</h3>
+            {userGenerations?.length === 0 && (
+              <div className="text-slate-500 text-center py-8">No generations yet.</div>
+            )}
+            {userGenerations?.map((generation) => (
+              <div key={generation._id} className="border p-4 mb-4 rounded">
+                <div className="flex justify-between items-center">
+                  <span>
+                    {new Date(generation.createdAt).toLocaleDateString()} -
+                    {generation.generationType} mode -
+                    {generation.generatedImages.length} images
+                  </span>
+                  <span className={`px-2 py-1 rounded text-sm ${
+                    generation.status === 'completed' ? 'bg-green-100 text-green-800' :
+                    generation.status === 'generating' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-red-100 text-red-800'
+                  }`}>
+                    {generation.status}
+                  </span>
+                </div>
+                {generation.status === 'completed' && (
+                  <div className="mt-2 grid grid-cols-4 gap-2">
+                    {generation.generatedImages.map((img, idx) => (
+                      <div key={idx} className="text-center">
+                        <ConvexImage fileId={img.imageId} alt={img.title} />
+                        <p className="text-xs mt-1">{img.title}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <style>{`
         .pretty-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
