@@ -78,8 +78,8 @@ const ImageSelector: React.FC<ImageSelectorProps> = ({
                 <div
                   key={image.id}
                   className={`relative cursor-pointer rounded-lg border-2 transition-all duration-200 ${isSelected
-                      ? 'border-sky-500 bg-sky-50'
-                      : 'border-slate-200 hover:border-slate-300'
+                    ? 'border-sky-500 bg-sky-50'
+                    : 'border-slate-200 hover:border-slate-300'
                     }`}
                   onClick={() => handleImageClick(image.id)}
                 >

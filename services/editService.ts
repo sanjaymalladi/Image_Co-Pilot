@@ -112,9 +112,9 @@ export class EditService {
         failureCount++;
       }
 
-      // Add a small delay between requests to avoid overwhelming the API
+      // Add a 5-second delay between requests to avoid overwhelming the API
       if (i < requests.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
 
