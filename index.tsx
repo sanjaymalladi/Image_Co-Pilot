@@ -3,7 +3,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { ClerkProvider, SignedIn, SignedOut, SignInButton } from '@clerk/clerk-react';
+import { ConvexProvider } from 'convex/react';
 import { Button } from './components/Button';
+import convex from './lib/convex';
 import './index.css';
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -29,13 +31,15 @@ const Unauthenticated: React.FC = () => (
 
 root.render(
   <ClerkProvider publishableKey={publishableKey}>
-    <SignedIn>
-      <React.StrictMode>
-        <App />
-      </React.StrictMode>
-    </SignedIn>
-    <SignedOut>
-      <Unauthenticated />
-    </SignedOut>
+    <ConvexProvider client={convex}>
+      <SignedIn>
+        <React.StrictMode>
+          <App />
+        </React.StrictMode>
+      </SignedIn>
+      <SignedOut>
+        <Unauthenticated />
+      </SignedOut>
+    </ConvexProvider>
   </ClerkProvider>
 );

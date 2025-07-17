@@ -7,11 +7,17 @@ import { fileToBase64WithType } from './utils/fileUtils';
 import { Button } from './components/Button';
 import { Spinner } from './components/Spinner';
 import { Alert } from './components/Alert';
-import { XCircleIcon, WandSparklesIcon, SparklesIcon, UploadIcon, ClipboardIcon, CheckIcon, PlaceholderIcon, ArrowDownTrayIcon } from './components/Icons';
+import { XCircleIcon, WandSparklesIcon, SparklesIcon, UploadIcon, ClipboardIcon, CheckIcon, PlaceholderIcon, ArrowDownTrayIcon, ClockIcon } from './components/Icons';
 import { ShoppingBagIcon as GarmentIcon, PhotoIcon as BackgroundIcon, UserIcon as ModelIcon } from '@heroicons/react/24/outline';
-import { SignedIn, SignedOut, UserButton, SignInButton } from '@clerk/clerk-react';
+import { SignedIn, SignedOut, UserButton, SignInButton, useUser } from '@clerk/clerk-react';
+import HistoryView from './components/HistoryView';
+import EditChatInterface from './components/EditChatInterface';
+import ErrorBoundary from './components/ErrorBoundary';
+import { createHistoryService } from './services/historyService';
+import convex from './lib/convex';
 
 type WorkflowMode = 'simple' | 'advanced' | null;
+type AppMode = 'generation' | 'history';
 
 export interface FashionPromptData {
   garmentAnalysis: string;
@@ -32,6 +38,33 @@ export interface RefinedPromptItem {
 
 const App: React.FC = () => {
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('simple');
+  const [appMode, setAppMode] = useState<AppMode>('generation');
+  const { user } = useUser();
+
+  // Initialize history service
+  const historyService = createHistoryService(convex);
+
+  // Helper function to save images to history
+  const saveToHistory = async (imageUrl: string, prompt: string, title: string, aspectRatio: string = '3:4') => {
+    if (!user) return;
+    
+    try {
+      await historyService.saveToHistory({
+        userId: user.id,
+        prompt,
+        imageUrl,
+        title,
+        aspectRatio,
+        metadata: {
+          model: 'flux-kontext-apps/multi-image-list',
+          originalPrompt: prompt,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to save to history:', error);
+      // Don't show error to user as this is background operation
+    }
+  };
 
   const [fashionGarmentFiles, setFashionGarmentFiles] = useState<File[]>([]);
   const [fashionGarmentPreviewUrls, setFashionGarmentPreviewUrls] = useState<string[]>([]);
@@ -62,6 +95,11 @@ const App: React.FC = () => {
     studio: false,
     lifestyle: false
   });
+
+  // Edit mode state
+  const [isEditMode, setIsEditMode] = useState<boolean>(false);
+  const [editMode, setEditMode] = useState<'single' | 'all'>('all');
+  const [selectedImageForEdit, setSelectedImageForEdit] = useState<string | null>(null);
 
   const MAX_FILE_SIZE_MB = 4;
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -385,7 +423,8 @@ const App: React.FC = () => {
           // const savedSeedUrl = await persistImage(seedImageUrl); // Removed persistImage
           setFirstImageUrl(seedImageUrl);
           setRefinedPrompts(prev => prev.map(p => p.id === frontPromptId ? { ...p, isLoadingImage: false, imageUrl: seedImageUrl } : p));
-          // await addHistory('image_generated', { url: savedSeedUrl, title: frontPromptItem.title, aspectRatio: frontPromptItem.aspectRatio }); // Removed addHistory
+          // Save to history
+          await saveToHistory(seedImageUrl, frontPromptItem.prompt, frontPromptItem.title, frontPromptItem.aspectRatio);
         } catch (err: any) {
           setRefinedPrompts(prev => prev.map(p => p.id === frontPromptId ? { ...p, isLoadingImage: false, error: err.message || 'Failed' } : p));
           throw err;
@@ -400,8 +439,8 @@ const App: React.FC = () => {
               aspect_ratio: p.aspectRatio,
               input_images: [...garmentDataUrls, seedImageUrl],
             });
-            // const finalUrl = await persistImage(replicateUrl); // Removed persistImage
-            // await addHistory('image_generated', { url: finalUrl, title: p.title, aspectRatio: p.aspectRatio }); // Removed addHistory
+            // Save to history
+            await saveToHistory(replicateUrl, p.prompt, p.title, p.aspectRatio);
             return { id: p.id, imageUrl: replicateUrl } as const;
           } catch (err: any) {
             return { id: p.id, error: err.message || 'Failed' } as const;
@@ -492,6 +531,8 @@ const App: React.FC = () => {
 
         // Update prompt item with generated image
         setRefinedPrompts(prev => prev.map(p => p.id === itemId ? { ...p, isLoadingImage: false, imageUrl } : p));
+        // Save to history
+        await saveToHistory(imageUrl, promptItem.prompt, promptItem.title, promptItem.aspectRatio);
     } catch (err: any) {
         setRefinedPrompts(prev => prev.map(p => p.id === itemId ? { ...p, isLoadingImage: false, error: err.message || 'Failed to generate image' } : p));
       }
@@ -531,6 +572,8 @@ const App: React.FC = () => {
         aspectRatio: '3:4',
         imageUrl,
       }]);
+      // Save to history
+      await saveToHistory(imageUrl, fashionPromptData.initialJsonPrompt, 'Generated Image', '3:4');
     } catch (err: any) {
       setError(err.message || "Failed to generate image.");
     }
@@ -616,6 +659,34 @@ const App: React.FC = () => {
     }
   };
 
+  // Edit mode handlers
+  const handleEditModeToggle = () => {
+    const hasImages = refinedPrompts.some(item => item.imageUrl);
+    if (!hasImages) {
+      setError('No images available to edit. Please generate some images first.');
+      return;
+    }
+    setIsEditMode(!isEditMode);
+    setSelectedImageForEdit(null);
+  };
+
+  const handleEditModeChange = (mode: 'single' | 'all') => {
+    setEditMode(mode);
+    if (mode === 'single' && refinedPrompts.length > 0) {
+      // Select the first available image by default
+      const firstImageWithUrl = refinedPrompts.find(item => item.imageUrl);
+      setSelectedImageForEdit(firstImageWithUrl?.id || null);
+    } else {
+      setSelectedImageForEdit(null);
+    }
+  };
+
+  const handleEditComplete = (editedImages: RefinedPromptItem[]) => {
+    setRefinedPrompts(editedImages);
+    setIsEditMode(false);
+    setSelectedImageForEdit(null);
+  };
+
   const renderFileUploadArea = (
     areaType: 'garment' | 'backgroundRef' | 'modelRef',
     files: File[],
@@ -663,12 +734,22 @@ const App: React.FC = () => {
       return (
         <div className="space-y-4">
           {items.length > 0 && (
-            <div className="flex justify-end">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={handleEditModeToggle}
+                  variant="secondary"
+                  size="sm"
+                  disabled={!items.some(item => item.imageUrl)}
+                >
+                  <SparklesIcon className="w-4 h-4 mr-1" />
+                  Edit Images
+                </Button>
+              </div>
               <Button
                 onClick={handleDownloadAllImages}
                 variant="secondary"
                 size="sm"
-                className="mb-2"
               >
                 <ArrowDownTrayIcon className="w-4 h-4 mr-1" />
                 Download All Images
@@ -761,7 +842,18 @@ const App: React.FC = () => {
             </SignInButton>
           </SignedOut>
           <SignedIn>
-            <UserButton afterSignOutUrl="/" />
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="secondary" 
+                size="sm" 
+                onClick={() => setAppMode(appMode === 'history' ? 'generation' : 'history')}
+                className="flex items-center gap-2"
+              >
+                <ClockIcon className="w-4 h-4" />
+                {appMode === 'history' ? 'Back to Generation' : 'View History'}
+              </Button>
+              <UserButton afterSignOutUrl="/" />
+            </div>
           </SignedIn>
           </div>
       </nav>
@@ -959,6 +1051,44 @@ const App: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* History View */}
+      {appMode === 'history' && user && (
+        <ErrorBoundary
+          onError={(error, errorInfo) => {
+            console.error('History view error:', error, errorInfo);
+            setError('Failed to load history. Please try refreshing the page.');
+          }}
+        >
+          <HistoryView
+            userId={user.id}
+            onClose={() => setAppMode('generation')}
+            onImageSelect={(item) => {
+              console.log('Selected history item:', item);
+              // Could potentially load the image for editing or viewing
+            }}
+          />
+        </ErrorBoundary>
+      )}
+
+      {/* Edit Chat Interface */}
+      {isEditMode && (
+        <ErrorBoundary
+          onError={(error, errorInfo) => {
+            console.error('Edit interface error:', error, errorInfo);
+            setError('Failed to load edit interface. Please try again.');
+            setIsEditMode(false);
+          }}
+        >
+          <EditChatInterface
+            currentImages={refinedPrompts}
+            onEditComplete={handleEditComplete}
+            onClose={() => setIsEditMode(false)}
+            editMode={editMode}
+            selectedImageId={selectedImageForEdit}
+          />
+        </ErrorBoundary>
+      )}
 
       <style>{`
         .pretty-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }

@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.kiro/specs/image-history-and-editing/design.md
+.kiro/specs/image-history-and-editing/requirements.md
+.kiro/specs/image-history-and-editing/tasks.md
