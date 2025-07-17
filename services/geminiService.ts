@@ -93,15 +93,25 @@ export const generateInitialQaImage = async (prompt: string, garmentDataUrls: st
 };
 
 export const generateImagePack = async (promptsToGenerate: RefinedPromptItem[]): Promise<GeneratedImageResult[]> => {
-  const generationPromises = promptsToGenerate.map(async (promptItem) => {
+  const results: GeneratedImageResult[] = [];
+  
+  for (let i = 0; i < promptsToGenerate.length; i++) {
+    const promptItem = promptsToGenerate[i];
+    
     try {
       const imageUrl = await generateImageFromPrompt(promptItem.prompt, promptItem.aspectRatio);
-      return { id: promptItem.id, imageUrl };
+      results.push({ id: promptItem.id, imageUrl });
     } catch (err: any) {
-      return { id: promptItem.id, error: err.message || 'Image generation failed.' };
+      results.push({ id: promptItem.id, error: err.message || 'Image generation failed.' });
     }
-  });
-  return Promise.all(generationPromises);
+    
+    // Add a 1-second delay between requests to avoid overwhelming the API
+    if (i < promptsToGenerate.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  
+  return results;
 };
 
 export const generateFashionAnalysisAndInitialJsonPrompt = async (
