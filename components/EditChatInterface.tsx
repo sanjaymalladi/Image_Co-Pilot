@@ -21,8 +21,8 @@ interface EditChatInterfaceProps {
   currentImages: RefinedPromptItem[];
   onEditComplete: (editedImages: RefinedPromptItem[]) => void;
   onClose: () => void;
-  editMode: 'single' | 'all';
-  selectedImageId?: string;
+  editMode: 'single' | 'multiple';
+  selectedImageIds: string[];
 }
 
 const EditChatInterface: React.FC<EditChatInterfaceProps> = ({
@@ -30,7 +30,7 @@ const EditChatInterface: React.FC<EditChatInterfaceProps> = ({
   onEditComplete,
   onClose,
   editMode,
-  selectedImageId,
+  selectedImageIds,
 }) => {
   const [messages, setMessages] = useState<EditMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -44,10 +44,10 @@ const EditChatInterface: React.FC<EditChatInterfaceProps> = ({
   const historyService = getHistoryService();
   const { user } = useUser();
 
-  // Get images to edit based on mode
-  const imagesToEdit = editMode === 'single' && selectedImageId 
-    ? currentImages.filter(img => img.id === selectedImageId)
-    : currentImages.filter(img => img.imageUrl);
+  // Get images to edit based on selected IDs
+  const imagesToEdit = currentImages.filter(img => 
+    selectedImageIds.includes(img.id) && img.imageUrl
+  );
 
   useEffect(() => {
     // Add welcome message

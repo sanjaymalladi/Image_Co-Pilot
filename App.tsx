@@ -12,6 +12,7 @@ import { ShoppingBagIcon as GarmentIcon, PhotoIcon as BackgroundIcon, UserIcon a
 import { SignedIn, SignedOut, UserButton, SignInButton, useUser } from '@clerk/clerk-react';
 import HistoryView from './components/HistoryView';
 import EditChatInterface from './components/EditChatInterface';
+import ImageSelector from './components/ImageSelector';
 import ErrorBoundary from './components/ErrorBoundary';
 import { createHistoryService } from './services/historyService';
 import convex from './lib/convex';
@@ -98,8 +99,9 @@ const App: React.FC = () => {
 
   // Edit mode state
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
-  const [editMode, setEditMode] = useState<'single' | 'all'>('all');
-  const [selectedImageForEdit, setSelectedImageForEdit] = useState<string | null>(null);
+  const [showImageSelector, setShowImageSelector] = useState<boolean>(false);
+  const [editMode, setEditMode] = useState<'single' | 'multiple'>('multiple');
+  const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
 
   const MAX_FILE_SIZE_MB = 4;
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -666,25 +668,30 @@ const App: React.FC = () => {
       setError('No images available to edit. Please generate some images first.');
       return;
     }
-    setIsEditMode(!isEditMode);
-    setSelectedImageForEdit(null);
+    setShowImageSelector(true);
   };
 
-  const handleEditModeChange = (mode: 'single' | 'all') => {
-    setEditMode(mode);
-    if (mode === 'single' && refinedPrompts.length > 0) {
-      // Select the first available image by default
-      const firstImageWithUrl = refinedPrompts.find(item => item.imageUrl);
-      setSelectedImageForEdit(firstImageWithUrl?.id || null);
-    } else {
-      setSelectedImageForEdit(null);
-    }
+  const handleImageSelectionChange = (selectedIds: string[]) => {
+    setSelectedImageIds(selectedIds);
+  };
+
+  const handleImageSelectionConfirm = () => {
+    if (selectedImageIds.length === 0) return;
+    
+    setEditMode(selectedImageIds.length === 1 ? 'single' : 'multiple');
+    setShowImageSelector(false);
+    setIsEditMode(true);
+  };
+
+  const handleImageSelectionCancel = () => {
+    setShowImageSelector(false);
+    setSelectedImageIds([]);
   };
 
   const handleEditComplete = (editedImages: RefinedPromptItem[]) => {
     setRefinedPrompts(editedImages);
     setIsEditMode(false);
-    setSelectedImageForEdit(null);
+    setSelectedImageIds([]);
   };
 
   const renderFileUploadArea = (
@@ -1071,6 +1078,18 @@ const App: React.FC = () => {
         </ErrorBoundary>
       )}
 
+      {/* Image Selector */}
+      {showImageSelector && (
+        <ImageSelector
+          images={refinedPrompts}
+          selectedImageIds={selectedImageIds}
+          onSelectionChange={handleImageSelectionChange}
+          onConfirm={handleImageSelectionConfirm}
+          onCancel={handleImageSelectionCancel}
+          mode="multiple"
+        />
+      )}
+
       {/* Edit Chat Interface */}
       {isEditMode && (
         <ErrorBoundary
@@ -1085,7 +1104,7 @@ const App: React.FC = () => {
             onEditComplete={handleEditComplete}
             onClose={() => setIsEditMode(false)}
             editMode={editMode}
-            selectedImageId={selectedImageForEdit}
+            selectedImageIds={selectedImageIds}
           />
         </ErrorBoundary>
       )}
