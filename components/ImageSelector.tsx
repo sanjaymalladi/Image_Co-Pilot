@@ -52,7 +52,7 @@ const ImageSelector: React.FC<ImageSelectorProps> = ({
             Select Images to Edit
           </h2>
           <p className="text-sm text-slate-500">
-            {mode === 'single' 
+            {mode === 'single'
               ? 'Choose one image to edit'
               : `Choose images to edit (${selectedImageIds.length} selected)`
             }
@@ -77,11 +77,10 @@ const ImageSelector: React.FC<ImageSelectorProps> = ({
               return (
                 <div
                   key={image.id}
-                  className={`relative cursor-pointer rounded-lg border-2 transition-all duration-200 ${
-                    isSelected 
-                      ? 'border-sky-500 bg-sky-50' 
+                  className={`relative cursor-pointer rounded-lg border-2 transition-all duration-200 ${isSelected
+                      ? 'border-sky-500 bg-sky-50'
                       : 'border-slate-200 hover:border-slate-300'
-                  }`}
+                    }`}
                   onClick={() => handleImageClick(image.id)}
                 >
                   <div className="aspect-square overflow-hidden rounded-t-lg">
@@ -99,7 +98,7 @@ const ImageSelector: React.FC<ImageSelectorProps> = ({
                       {image.prompt.substring(0, 100)}...
                     </p>
                   </div>
-                  
+
                   {/* Selection indicator */}
                   {isSelected && (
                     <div className="absolute top-2 right-2 bg-sky-500 text-white rounded-full p-1">
@@ -117,7 +116,7 @@ const ImageSelector: React.FC<ImageSelectorProps> = ({
           <Button variant="secondary" onClick={onCancel}>
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={onConfirm}
             disabled={selectedImageIds.length === 0}
           >

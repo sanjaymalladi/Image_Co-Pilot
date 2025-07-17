@@ -164,7 +164,9 @@ const EditChatInterface: React.FC<EditChatInterfaceProps> = ({
       const updatedImages = [...currentImages];
       let successCount = 0;
 
-      bulkResult.results.forEach(async (result, index) => {
+      // Process results sequentially to ensure proper async handling
+      for (let index = 0; index < bulkResult.results.length; index++) {
+        const result = bulkResult.results[index];
         const originalImage = imagesToEdit[index];
         const imageIndex = currentImages.findIndex(img => img.id === originalImage.id);
         
@@ -190,7 +192,7 @@ const EditChatInterface: React.FC<EditChatInterfaceProps> = ({
           };
           setMessages(prev => [...prev, resultMessage]);
         }
-      });
+      }
 
       // Add summary message
       const summaryMessage: EditMessage = {
