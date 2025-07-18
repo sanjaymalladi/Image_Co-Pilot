@@ -432,9 +432,12 @@ const App: React.FC = () => {
           throw err;
         }
 
-        // Generate remaining images in parallel using garment + seed references
+        // Generate remaining images sequentially with delays to avoid rate limits
         const remaining: RefinedPromptItem[] = promptsToGenerate.filter(p => p.id !== frontPromptId);
-        const remainingPromises: Promise<{id: string; imageUrl?: string; error?: string}>[] = remaining.map(async (p: RefinedPromptItem) => {
+        const remainingResults: {id: string; imageUrl?: string; error?: string}[] = [];
+        
+        for (let i = 0; i < remaining.length; i++) {
+          const p = remaining[i];
           try {
             const replicateUrl = await generateImageViaReplicate({
               prompt: p.prompt,
@@ -443,13 +446,16 @@ const App: React.FC = () => {
             });
             // Save to history
             await saveToHistory(replicateUrl, p.prompt, p.title, p.aspectRatio);
-            return { id: p.id, imageUrl: replicateUrl } as const;
+            remainingResults.push({ id: p.id, imageUrl: replicateUrl });
           } catch (err: any) {
-            return { id: p.id, error: err.message || 'Failed' } as const;
+            remainingResults.push({ id: p.id, error: err.message || 'Failed' });
           }
-        });
-
-        const remainingResults: {id: string; imageUrl?: string; error?: string}[] = await Promise.all(remainingPromises);
+          
+          // Add a 5-second delay between image generation requests
+          if (i < remaining.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 5000));
+          }
+        }
 
         setRefinedPrompts(prev => prev.map(p => {
           const res = remainingResults.find(r => r.id === p.id);
