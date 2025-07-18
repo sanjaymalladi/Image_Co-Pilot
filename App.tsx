@@ -15,6 +15,8 @@ import EditChatInterface from './components/EditChatInterface';
 import ImageSelector from './components/ImageSelector';
 import ErrorBoundary from './components/ErrorBoundary';
 import { createHistoryService } from './services/historyService';
+import { getProgressService, GenerationProgress } from './services/progressService';
+import DownloadModal from './components/DownloadModal';
 import convex from './lib/convex';
 
 type WorkflowMode = 'simple' | 'advanced' | null;
@@ -103,6 +105,24 @@ const App: React.FC = () => {
   const [editMode, setEditMode] = useState<'single' | 'multiple'>('multiple');
   const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
 
+  // Progress tracking state
+  const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
+  const progressService = getProgressService();
+
+  // Download modal state
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [downloadImageUrl, setDownloadImageUrl] = useState<string>('');
+  const [downloadFilename, setDownloadFilename] = useState<string>('');
+  const [downloadTitle, setDownloadTitle] = useState<string>('');
+
+  // Subscribe to progress updates
+  useEffect(() => {
+    const unsubscribe = progressService.onProgress((progress) => {
+      setGenerationProgress(progress);
+    });
+    return unsubscribe;
+  }, [progressService]);
+
   const MAX_FILE_SIZE_MB = 4;
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
   const MAX_FILES_FASHION_PROMPT = 2;
@@ -126,6 +146,8 @@ const App: React.FC = () => {
     setIsDevMode(false);
     setFirstImageUrl(null);
     setSelectedPacks({ studio: false, lifestyle: false });
+    // Reset progress tracking
+    progressService.resetProgress();
   };
 
   const handleModeChange = (mode: WorkflowMode) => {
@@ -314,15 +336,23 @@ const App: React.FC = () => {
       setError("Missing data: Garment image(s), generated QA image, or initial analysis is missing.");
       return;
     }
+
+    // Initialize progress tracking for advanced mode
+    const steps = progressService.getStepsForMode('advanced', 'all', 8);
+    progressService.startProgress(steps);
+    progressService.updateStep('manual-qa', 'completed'); // QA image already uploaded
+    
     setIsLoading(true);
     setError(null);
     setRefinedPrompts([]);
 
     try {
+      progressService.updateStep('prompt-refinement', 'active');
       const originalGarmentImageInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
       const generatedFashionImageInput = await fileToBase64WithType(generatedFashionImageFile);
 
       const results = await performQaAndGenerateStudioPrompts(originalGarmentImageInputs, generatedFashionImageInput, fashionPromptData);
+      progressService.updateStep('prompt-refinement', 'completed');
       
       setRefinedPrompts(results.map(p => ({
         id: `${p.title.replace(/\s+/g, '-')}-${Date.now()}`,
@@ -333,9 +363,14 @@ const App: React.FC = () => {
         aspectRatio: '3:4',
       })));
 
+      progressService.updateStep('finalize', 'active');
+      await new Promise(resolve => setTimeout(resolve, 500));
+      progressService.completeProgress();
+
     } catch (err: any) {
       setError(err.message || "Failed to perform QA and generate prompts.");
       setRefinedPrompts([]);
+      progressService.errorProgress('prompt-refinement', err.message || 'QA and prompt generation failed');
     }
     setIsLoading(false);
   };
@@ -372,24 +407,37 @@ const App: React.FC = () => {
         setError(`Please upload 1 or ${MAX_FILES_FASHION_PROMPT} garment image(s).`);
         return;
     }
+    
+    // Initialize progress tracking
+    const steps = progressService.getStepsForMode('simple', packType);
+    progressService.startProgress(steps);
+    
     setIsLoading(true);
     setError(null);
     setRefinedPrompts([]);
 
     try {
-        // Step 1: Analyze Garment (Hidden)
+        // Step 1: Analyze Garment
+        progressService.updateStep('analyze', 'active');
         const garmentImageInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
         const backgroundRefImageInputs = await Promise.all(fashionBackgroundRefFiles.map(fileToBase64WithType));
         const modelRefImageInputs = await Promise.all(fashionModelRefFiles.map(fileToBase64WithType));
         
         const analysisData = await generateFashionAnalysisAndInitialJsonPrompt(garmentImageInputs, backgroundRefImageInputs.length > 0 ? backgroundRefImageInputs : undefined, modelRefImageInputs.length > 0 ? modelRefImageInputs : undefined);
+        progressService.updateStep('analyze', 'completed');
 
         // Prepare data URLs once to reuse across calls
         const garmentDataUrls = garmentImageInputs.map(img => `data:${img.mimeType};base64,${img.base64}`);
 
         // Step 2: Perform QA with a REAL generated image that uses the garment references
+        progressService.updateStep('qa-generation', 'active');
         const qaImageInput = await generateInitialQaImage(analysisData.initialJsonPrompt, garmentDataUrls);
+        progressService.updateStep('qa-generation', 'completed');
+
+        // Step 3: Create optimized prompts
+        progressService.updateStep('prompt-refinement', 'active');
         const finalPrompts = await performQaAndGenerateStudioPrompts(garmentImageInputs, qaImageInput, analysisData);
+        progressService.updateStep('prompt-refinement', 'completed');
         
         const promptsToGenerate = finalPrompts
             .filter(p => packType === 'all' || p.title.toLowerCase().includes(packType))
@@ -404,7 +452,7 @@ const App: React.FC = () => {
         
         setRefinedPrompts(promptsToGenerate);
 
-        // --- Step 3: Generate Images via Replicate multi-image workflow ---
+        // --- Step 4: Generate Images via Replicate multi-image workflow ---
 
         // garmentDataUrls were already prepared above
 
@@ -415,26 +463,54 @@ const App: React.FC = () => {
 
         // Generate the seed/front image
         let seedImageUrl: string;
+        
+        // Update progress for front view generation
+        if (packType === 'studio' || packType === 'all') {
+          progressService.updateStep('studio-front', 'active');
+        }
+        
         try {
           seedImageUrl = await generateImageViaReplicate({
             prompt: frontPromptItem.prompt,
             aspect_ratio: frontPromptItem.aspectRatio,
             input_images: garmentDataUrls,
           });
-          // Persist to Supabase and store history
-          // const savedSeedUrl = await persistImage(seedImageUrl); // Removed persistImage
+          
           setFirstImageUrl(seedImageUrl);
           setRefinedPrompts(prev => prev.map(p => p.id === frontPromptId ? { ...p, isLoadingImage: false, imageUrl: seedImageUrl } : p));
           // Save to history
           await saveToHistory(seedImageUrl, frontPromptItem.prompt, frontPromptItem.title, frontPromptItem.aspectRatio);
+          
+          if (packType === 'studio' || packType === 'all') {
+            progressService.updateStep('studio-front', 'completed');
+          }
         } catch (err: any) {
           setRefinedPrompts(prev => prev.map(p => p.id === frontPromptId ? { ...p, isLoadingImage: false, error: err.message || 'Failed' } : p));
+          if (packType === 'studio' || packType === 'all') {
+            progressService.errorProgress('studio-front', err.message || 'Failed to generate front view');
+          }
           throw err;
         }
 
         // Generate remaining images sequentially with delays to avoid rate limits
         const remaining: RefinedPromptItem[] = promptsToGenerate.filter(p => p.id !== frontPromptId);
         const remainingResults: {id: string; imageUrl?: string; error?: string}[] = [];
+        
+        // Update progress for additional studio images or lifestyle generation
+        if (remaining.length > 0) {
+          if (packType === 'studio' || packType === 'all') {
+            const hasStudioRemaining = remaining.some(p => p.title.toLowerCase().includes('studio'));
+            if (hasStudioRemaining) {
+              progressService.updateStep('studio-additional', 'active');
+            }
+          }
+          if (packType === 'lifestyle' || packType === 'all') {
+            const hasLifestyleRemaining = remaining.some(p => p.title.toLowerCase().includes('lifestyle'));
+            if (hasLifestyleRemaining) {
+              progressService.updateStep('lifestyle-generation', 'active');
+            }
+          }
+        }
         
         for (let i = 0; i < remaining.length; i++) {
           const p = remaining[i];
@@ -457,6 +533,20 @@ const App: React.FC = () => {
           }
         }
 
+        // Complete progress steps
+        if (packType === 'studio' || packType === 'all') {
+          const hasStudioRemaining = remaining.some(p => p.title.toLowerCase().includes('studio'));
+          if (hasStudioRemaining) {
+            progressService.updateStep('studio-additional', 'completed');
+          }
+        }
+        if (packType === 'lifestyle' || packType === 'all') {
+          const hasLifestyleRemaining = remaining.some(p => p.title.toLowerCase().includes('lifestyle'));
+          if (hasLifestyleRemaining) {
+            progressService.updateStep('lifestyle-generation', 'completed');
+          }
+        }
+
         setRefinedPrompts(prev => prev.map(p => {
           const res = remainingResults.find(r => r.id === p.id);
           if (!res) return p;
@@ -465,9 +555,14 @@ const App: React.FC = () => {
 
     } catch (err: any) {
         setError(err.message || "Failed to generate fashion image pack.");
+        progressService.errorProgress(progressService.getCurrentProgress()?.currentStepId || 'unknown', err.message || 'Generation failed');
+    } finally {
+        // Finalize progress
+        progressService.updateStep('finalize', 'active');
+        await new Promise(resolve => setTimeout(resolve, 500)); // Brief pause for finalization
+        progressService.completeProgress();
+        setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
 
   const handleAutoQa = async () => {
@@ -619,28 +714,36 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDownloadImage = async (imageUrl: string, filename: string) => {
-    try {
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      setError('Failed to download image');
-    }
+  const handleDownloadImage = (imageUrl: string, filename: string, title?: string) => {
+    setDownloadImageUrl(imageUrl);
+    setDownloadFilename(filename);
+    setDownloadTitle(title || 'Download Image');
+    setShowDownloadModal(true);
   };
 
   const handleDownloadAllImages = async () => {
     const validImages = refinedPrompts.filter(item => item.imageUrl);
+    
+    // For bulk download, we'll use the basic download without upscale options
     for (const item of validImages) {
       if (item.imageUrl) {
-        await handleDownloadImage(item.imageUrl, `${item.title.toLowerCase().replace(/\s+/g, '-')}.png`);
+        try {
+          const response = await fetch(item.imageUrl);
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${item.title.toLowerCase().replace(/\s+/g, '-')}.png`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          
+          // Small delay between downloads
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (error) {
+          console.error(`Failed to download ${item.title}:`, error);
+        }
       }
     }
   };
@@ -787,7 +890,11 @@ const App: React.FC = () => {
                       <div className="flex flex-col gap-2">
                         {item.imageUrl && !item.isLoadingImage && (
                           <Button 
-                            onClick={() => handleDownloadImage(item.imageUrl!, `${item.title.toLowerCase().replace(/\s+/g, '-')}.png`)}
+                            onClick={() => handleDownloadImage(
+                              item.imageUrl!, 
+                              `${item.title.toLowerCase().replace(/\s+/g, '-')}.png`,
+                              `Download ${item.title}`
+                            )}
                             variant="secondary" 
                             size="sm"
                             className="w-full"
@@ -884,7 +991,7 @@ const App: React.FC = () => {
         {workflowMode === 'simple' && fashionGarmentFiles.length > 0 && (
           <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100 space-y-4">
             <h3 className="text-lg font-semibold text-secondary text-center">Generate Image Pack</h3>
-              <p className="text-center text-sm text-slate-500">One click to get a full set of professional images.</p>
+            <p className="text-center text-sm text-slate-500">One click to get a full set of professional images.</p>
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-center gap-8">
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -906,17 +1013,55 @@ const App: React.FC = () => {
                   <span className="text-slate-700">Lifestyle Pack (4 Images)</span>
                 </label>
               </div>
+              
               <Button
                 onClick={handleGenerateSelectedPacks}
                 disabled={isLoading || (!selectedPacks.studio && !selectedPacks.lifestyle)}
                 className="w-full"
               >
-                {isLoading ? <Spinner /> : <SparklesIcon className="w-5 h-5" />}
-                Generate Selected Images
+                {isLoading ? (
+                  <>
+                    <Spinner />
+                    {generationProgress && (
+                      <span className="ml-2">
+                        {generationProgress.steps.find(s => s.status === 'active')?.label || 'Generating'} 
+                        {generationProgress.elapsedTime > 0 && (
+                          <span className="text-sm opacity-75 ml-1">
+                            (~{progressService.formatDuration(
+                              Math.max(0, progressService.getEstimatedTime(
+                                'simple',
+                                selectedPacks.studio && selectedPacks.lifestyle ? 'all' : 
+                                selectedPacks.studio ? 'studio' : 'lifestyle'
+                              ) - generationProgress.elapsedTime)
+                            )} left)
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <SparklesIcon className="w-5 h-5" />
+                    Generate Selected Images
+                    {(selectedPacks.studio || selectedPacks.lifestyle) && (
+                      <span className="text-sm opacity-75 ml-2">
+                        (~{progressService.formatDuration(
+                          progressService.getEstimatedTime(
+                            'simple',
+                            selectedPacks.studio && selectedPacks.lifestyle ? 'all' : 
+                            selectedPacks.studio ? 'studio' : 'lifestyle'
+                          )
+                        )})
+                      </span>
+                    )}
+                  </>
+                )}
                   </Button>
               </div>
           </div>
         )} {/* end Simple-mode pack */}
+
+
 
         {workflowMode === 'simple' && (refinedPrompts.length > 0 || isLoading) && (
           <div className="space-y-4">
@@ -1113,6 +1258,17 @@ const App: React.FC = () => {
             selectedImageIds={selectedImageIds}
           />
         </ErrorBoundary>
+      )}
+
+      {/* Download Modal */}
+      {showDownloadModal && (
+        <DownloadModal
+          isOpen={showDownloadModal}
+          onClose={() => setShowDownloadModal(false)}
+          imageUrl={downloadImageUrl}
+          filename={downloadFilename}
+          title={downloadTitle}
+        />
       )}
 
       <style>{`

@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { HistoryItem, getHistoryService } from '../services/historyService';
 import { Button } from './Button';
 import { Spinner } from './Spinner';
-import { XCircleIcon, ClockIcon, PhotoIcon, TrashIcon, EyeIcon } from './Icons';
+import { XCircleIcon, ClockIcon, PhotoIcon, TrashIcon, EyeIcon, ArrowDownTrayIcon, SparklesIcon } from './Icons';
 import { Modal } from './Modal';
+import DownloadModal from './DownloadModal';
 
 interface HistoryViewProps {
   userId: string;
@@ -18,6 +19,8 @@ interface HistoryItemDetailProps {
 }
 
 const HistoryItemDetail: React.FC<HistoryItemDetailProps> = ({ item, onClose, onDelete }) => {
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+
   const formatDate = (timestamp: number) => {
     return new Date(timestamp).toLocaleString();
   };
@@ -27,6 +30,10 @@ const HistoryItemDetail: React.FC<HistoryItemDetailProps> = ({ item, onClose, on
       onDelete(item._id);
       onClose();
     }
+  };
+
+  const handleDownload = () => {
+    setShowDownloadModal(true);
   };
 
   return (
@@ -64,13 +71,46 @@ const HistoryItemDetail: React.FC<HistoryItemDetailProps> = ({ item, onClose, on
             </div>
           </div>
 
-          {item.metadata && (
+          {/* Generation Details */}
+          <div className="bg-slate-50 p-3 rounded-md">
+            <h4 className="font-medium text-slate-700 mb-2 flex items-center">
+              <SparklesIcon className="w-4 h-4 mr-1" />
+              Generation Details
+            </h4>
+            <div className="space-y-2 text-sm">
+              {item.metadata?.model && (
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Model:</span>
+                  <span className="font-medium text-slate-800">{item.metadata.model}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-slate-600">Type:</span>
+                <span className="font-medium text-slate-800">
+                  {item.metadata?.editHistory && item.metadata.editHistory.length > 0 ? 'Edited Image' : 'Generated Image'}
+                </span>
+              </div>
+              {item.title && (
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Style:</span>
+                  <span className="font-medium text-slate-800">
+                    {item.title.includes('Studio') ? 'Studio' : 
+                     item.title.includes('Lifestyle') ? 'Lifestyle' : 
+                     item.title.includes('Front') ? 'Front View' :
+                     item.title.includes('Back') ? 'Back View' :
+                     item.title.includes('Side') ? 'Side View' :
+                     item.title.includes('Detail') ? 'Close-up Detail' : 'Custom'}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Additional Details */}
+          {item.metadata && (item.metadata.originalPrompt || (item.metadata.editHistory && item.metadata.editHistory.length > 0)) && (
             <div>
-              <h4 className="font-medium text-slate-700 mb-2">Details</h4>
-              <div className="text-sm space-y-1">
-                {item.metadata.model && (
-                  <p><span className="font-medium">Model:</span> {item.metadata.model}</p>
-                )}
+              <h4 className="font-medium text-slate-700 mb-2">Additional Details</h4>
+              <div className="text-sm space-y-3">
                 {item.metadata.originalPrompt && (
                   <div>
                     <span className="font-medium">Original Prompt:</span>
@@ -99,15 +139,32 @@ const HistoryItemDetail: React.FC<HistoryItemDetailProps> = ({ item, onClose, on
 
         {/* Actions */}
         <div className="flex justify-between pt-4 border-t">
-          <Button variant="secondary" onClick={onClose}>
-            Close
-          </Button>
+          <div className="flex space-x-2">
+            <Button variant="secondary" onClick={onClose}>
+              Close
+            </Button>
+            <Button onClick={handleDownload}>
+              <ArrowDownTrayIcon className="w-4 h-4 mr-1" />
+              Download
+            </Button>
+          </div>
           <Button variant="destructive" onClick={handleDelete}>
             <TrashIcon className="w-4 h-4 mr-1" />
             Delete
           </Button>
         </div>
       </div>
+
+      {/* Download Modal */}
+      {showDownloadModal && (
+        <DownloadModal
+          isOpen={showDownloadModal}
+          onClose={() => setShowDownloadModal(false)}
+          imageUrl={item.imageUrl}
+          filename={`${(item.title || 'image').toLowerCase().replace(/\s+/g, '-')}.png`}
+          title={`Download ${item.title || 'Image'}`}
+        />
+      )}
     </Modal>
   );
 };
@@ -263,6 +320,23 @@ const HistoryView: React.FC<HistoryViewProps> = ({ userId, onClose, onImageSelec
                     <p className="text-xs text-slate-500 line-clamp-2 mb-2">
                       {item.prompt}
                     </p>
+                    
+                    {/* Enhanced metadata display */}
+                    <div className="space-y-1 mb-2">
+                      {item.metadata?.model && (
+                        <div className="flex items-center text-xs text-slate-400">
+                          <span className="font-medium mr-1">Model:</span>
+                          <span className="truncate">{item.metadata.model.split('/').pop()}</span>
+                        </div>
+                      )}
+                      {item.metadata?.editHistory && item.metadata.editHistory.length > 0 && (
+                        <div className="flex items-center text-xs text-amber-600">
+                          <span className="font-medium mr-1">Edited:</span>
+                          <span>{item.metadata.editHistory.length} time{item.metadata.editHistory.length > 1 ? 's' : ''}</span>
+                        </div>
+                      )}
+                    </div>
+                    
                     <div className="flex items-center justify-between text-xs text-slate-400">
                       <span>{formatDate(item.createdAt)}</span>
                       <span>{item.aspectRatio}</span>
