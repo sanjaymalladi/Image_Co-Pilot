@@ -2,179 +2,32 @@ import React, { useState, useEffect } from 'react';
 import { HistoryItem, getHistoryService } from '../services/historyService';
 import { Button } from './Button';
 import { Spinner } from './Spinner';
-import { XCircleIcon, ClockIcon, PhotoIcon, TrashIcon, EyeIcon, ArrowDownTrayIcon, SparklesIcon } from './Icons';
-import { Modal } from './Modal';
+import { XCircleIcon, ClockIcon, PhotoIcon, TrashIcon, EyeIcon, ArrowDownTrayIcon } from './Icons';
 import DownloadModal from './DownloadModal';
+import FullScreenImageModal from './FullScreenImageModal';
+import { RefinedPromptItem } from '../App';
 
 interface HistoryViewProps {
   userId: string;
   onClose: () => void;
-  onImageSelect?: (item: HistoryItem) => void;
 }
 
-interface HistoryItemDetailProps {
-  item: HistoryItem;
-  onClose: () => void;
-  onDelete: (id: string) => void;
-}
 
-const HistoryItemDetail: React.FC<HistoryItemDetailProps> = ({ item, onClose, onDelete }) => {
-  const [showDownloadModal, setShowDownloadModal] = useState(false);
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleString();
-  };
 
-  const handleDelete = () => {
-    if (window.confirm('Are you sure you want to delete this item from your history?')) {
-      onDelete(item._id);
-      onClose();
-    }
-  };
 
-  const handleDownload = () => {
-    setShowDownloadModal(true);
-  };
-
-  return (
-    <Modal isOpen={true} onClose={onClose} title={item.title || 'History Item'}>
-      <div className="space-y-4">
-        {/* Image */}
-        <div className="aspect-square bg-slate-100 rounded-lg overflow-hidden">
-          <img 
-            src={item.imageUrl} 
-            alt={item.title || 'Generated image'}
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMTMuMDkgOC4yNkwyMCA5TDEzLjA5IDE1Ljc0TDEyIDIyTDEwLjkxIDE1Ljc0TDQgOUwxMC45MSA4LjI2TDEyIDJaIiBzdHJva2U9IiM5Q0E3QjciIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPgo=';
-            }}
-          />
-        </div>
-
-        {/* Metadata */}
-        <div className="space-y-3">
-          <div>
-            <h3 className="font-semibold text-slate-700 mb-1">Prompt</h3>
-            <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-md">
-              {item.prompt}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="font-medium text-slate-700">Created:</span>
-              <p className="text-slate-600">{formatDate(item.createdAt)}</p>
-            </div>
-            <div>
-              <span className="font-medium text-slate-700">Aspect Ratio:</span>
-              <p className="text-slate-600">{item.aspectRatio}</p>
-            </div>
-          </div>
-
-          {/* Generation Details */}
-          <div className="bg-slate-50 p-3 rounded-md">
-            <h4 className="font-medium text-slate-700 mb-2 flex items-center">
-              <SparklesIcon className="w-4 h-4 mr-1" />
-              Generation Details
-            </h4>
-            <div className="space-y-2 text-sm">
-              {item.metadata?.model && (
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Model:</span>
-                  <span className="font-medium text-slate-800">{item.metadata.model}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-slate-600">Type:</span>
-                <span className="font-medium text-slate-800">
-                  {item.metadata?.editHistory && item.metadata.editHistory.length > 0 ? 'Edited Image' : 'Generated Image'}
-                </span>
-              </div>
-              {item.title && (
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Style:</span>
-                  <span className="font-medium text-slate-800">
-                    {item.title.includes('Studio') ? 'Studio' : 
-                     item.title.includes('Lifestyle') ? 'Lifestyle' : 
-                     item.title.includes('Front') ? 'Front View' :
-                     item.title.includes('Back') ? 'Back View' :
-                     item.title.includes('Side') ? 'Side View' :
-                     item.title.includes('Detail') ? 'Close-up Detail' : 'Custom'}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Additional Details */}
-          {item.metadata && (item.metadata.originalPrompt || (item.metadata.editHistory && item.metadata.editHistory.length > 0)) && (
-            <div>
-              <h4 className="font-medium text-slate-700 mb-2">Additional Details</h4>
-              <div className="text-sm space-y-3">
-                {item.metadata.originalPrompt && (
-                  <div>
-                    <span className="font-medium">Original Prompt:</span>
-                    <p className="text-slate-600 bg-slate-50 p-2 rounded mt-1 text-xs">
-                      {item.metadata.originalPrompt}
-                    </p>
-                  </div>
-                )}
-                {item.metadata.editHistory && item.metadata.editHistory.length > 0 && (
-                  <div>
-                    <span className="font-medium">Edit History:</span>
-                    <div className="mt-1 space-y-2">
-                      {item.metadata.editHistory.map((edit, index) => (
-                        <div key={index} className="bg-slate-50 p-2 rounded text-xs">
-                          <p className="font-medium">Edit {index + 1}: {edit.editPrompt}</p>
-                          <p className="text-slate-500">{formatDate(edit.timestamp)}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Actions */}
-        <div className="flex justify-between pt-4 border-t">
-          <div className="flex space-x-2">
-            <Button variant="secondary" onClick={onClose}>
-              Close
-            </Button>
-            <Button onClick={handleDownload}>
-              <ArrowDownTrayIcon className="w-4 h-4 mr-1" />
-              Download
-            </Button>
-          </div>
-          <Button variant="destructive" onClick={handleDelete}>
-            <TrashIcon className="w-4 h-4 mr-1" />
-            Delete
-          </Button>
-        </div>
-      </div>
-
-      {/* Download Modal */}
-      {showDownloadModal && (
-        <DownloadModal
-          isOpen={showDownloadModal}
-          onClose={() => setShowDownloadModal(false)}
-          imageUrl={item.imageUrl}
-          filename={`${(item.title || 'image').toLowerCase().replace(/\s+/g, '-')}.png`}
-          title={`Download ${item.title || 'Image'}`}
-        />
-      )}
-    </Modal>
-  );
-};
-
-const HistoryView: React.FC<HistoryViewProps> = ({ userId, onClose, onImageSelect }) => {
+const HistoryView: React.FC<HistoryViewProps> = ({ userId, onClose }) => {
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedItem, setSelectedItem] = useState<HistoryItem | null>(null);
+
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Full-screen modal state
+  const [showFullScreenModal, setShowFullScreenModal] = useState(false);
+  const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [downloadItem, setDownloadItem] = useState<HistoryItem | null>(null);
 
   const historyService = getHistoryService();
 
@@ -195,10 +48,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ userId, onClose, onImageSelec
     loadHistory();
   }, [userId]);
 
-  const handleItemClick = (item: HistoryItem) => {
-    setSelectedItem(item);
-    onImageSelect?.(item);
-  };
 
   const handleDelete = async (id: string) => {
     try {
@@ -212,11 +61,54 @@ const HistoryView: React.FC<HistoryViewProps> = ({ userId, onClose, onImageSelec
     }
   };
 
+  // Convert HistoryItem to RefinedPromptItem for full-screen modal
+  const convertToRefinedPromptItem = (item: HistoryItem): RefinedPromptItem => ({
+    id: item._id,
+    title: item.title || 'Generated Image',
+    prompt: item.prompt,
+    isCopied: false,
+    isLoadingImage: false,
+    aspectRatio: item.aspectRatio,
+    imageUrl: item.imageUrl,
+  });
+
+  // Full-screen modal handlers
+  const handleImageFullScreen = (index: number) => {
+    console.log('🖼️ Opening full-screen for image at index:', index);
+    console.log('📊 Total history items:', historyItems.length);
+    console.log('🎯 Current showFullScreenModal state:', showFullScreenModal);
+    console.log('🔄 Setting showFullScreenModal to true');
+    setFullScreenImageIndex(index);
+    setShowFullScreenModal(true);
+
+    // Add a timeout to check if state was updated
+    setTimeout(() => {
+      console.log('⏰ After timeout - showFullScreenModal should be true');
+    }, 100);
+  };
+
+  const handleFullScreenImageChange = (newIndex: number) => {
+    setFullScreenImageIndex(newIndex);
+  };
+
+  const handleFullScreenImageUpdate = (updatedImage: RefinedPromptItem) => {
+    // Update the history item with the new image URL
+    setHistoryItems(prev => prev.map(item =>
+      item._id === updatedImage.id ? { ...item, imageUrl: updatedImage.imageUrl! } : item
+    ));
+  };
+
+  // Download handlers
+  const handleDownload = (item: HistoryItem) => {
+    setDownloadItem(item);
+    setShowDownloadModal(true);
+  };
+
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
     const now = new Date();
     const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
-    
+
     if (diffInHours < 24) {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } else if (diffInHours < 24 * 7) {
@@ -262,9 +154,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ userId, onClose, onImageSelec
                 <XCircleIcon className="w-5 h-5 text-red-500" />
                 <span className="text-red-700">{error}</span>
               </div>
-              <Button 
-                variant="secondary" 
-                size="sm" 
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={loadHistory}
                 className="mt-2"
               >
@@ -286,18 +178,18 @@ const HistoryView: React.FC<HistoryViewProps> = ({ userId, onClose, onImageSelec
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {historyItems.map((item) => (
+              {historyItems.map((item, index) => (
                 <div
                   key={item._id}
-                  className="bg-white border border-slate-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow cursor-pointer group"
-                  onClick={() => handleItemClick(item)}
+                  className="bg-white border border-slate-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow group"
                 >
                   {/* Image */}
                   <div className="aspect-square bg-slate-100 relative overflow-hidden">
                     <img
                       src={item.imageUrl}
                       alt={item.title || 'Generated image'}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200 cursor-pointer"
+                      onClick={() => handleImageFullScreen(index)}
                       onError={(e) => {
                         e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMTMuMDkgOC4yNkwyMCA5TDEzLjA5IDE1Ljc0TDEyIDIyTDEwLjkxIDE1Ljc0TDQgOUwxMC45MSA4LjI2TDEyIDJaIiBzdHJva2U9IiM5Q0E3QjciIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPgo=';
                       }}
@@ -314,29 +206,48 @@ const HistoryView: React.FC<HistoryViewProps> = ({ userId, onClose, onImageSelec
 
                   {/* Content */}
                   <div className="p-3">
-                    <h3 className="font-medium text-slate-800 text-sm mb-1 truncate">
-                      {item.title || 'Generated Image'}
-                    </h3>
-                    <p className="text-xs text-slate-500 line-clamp-2 mb-2">
-                      {item.prompt}
-                    </p>
-                    
-                    {/* Enhanced metadata display */}
-                    <div className="space-y-1 mb-2">
-                      {item.metadata?.model && (
-                        <div className="flex items-center text-xs text-slate-400">
-                          <span className="font-medium mr-1">Model:</span>
-                          <span className="truncate">{item.metadata.model.split('/').pop()}</span>
-                        </div>
-                      )}
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-medium text-slate-800 text-sm truncate flex-1">
+                        {item.title || 'Generated Image'}
+                      </h3>
+                      <div className="flex items-center space-x-1 ml-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownload(item);
+                          }}
+                          className="p-1"
+                        >
+                          <ArrowDownTrayIcon className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm('Delete this image?')) {
+                              handleDelete(item._id);
+                            }
+                          }}
+                          className="p-1"
+                        >
+                          <TrashIcon className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Input details */}
+                    <div className="text-xs text-slate-500 mb-2">
+                      <p className="line-clamp-2 mb-1">{item.prompt}</p>
                       {item.metadata?.editHistory && item.metadata.editHistory.length > 0 && (
-                        <div className="flex items-center text-xs text-amber-600">
-                          <span className="font-medium mr-1">Edited:</span>
-                          <span>{item.metadata.editHistory.length} time{item.metadata.editHistory.length > 1 ? 's' : ''}</span>
-                        </div>
+                        <span className="inline-block bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs">
+                          Edited {item.metadata.editHistory.length}x
+                        </span>
                       )}
                     </div>
-                    
+
                     <div className="flex items-center justify-between text-xs text-slate-400">
                       <span>{formatDate(item.createdAt)}</span>
                       <span>{item.aspectRatio}</span>
@@ -349,12 +260,28 @@ const HistoryView: React.FC<HistoryViewProps> = ({ userId, onClose, onImageSelec
         </div>
       </div>
 
-      {/* Detail Modal */}
-      {selectedItem && (
-        <HistoryItemDetail
-          item={selectedItem}
-          onClose={() => setSelectedItem(null)}
-          onDelete={handleDelete}
+
+
+      {/* Full Screen Image Modal */}
+      {showFullScreenModal && (
+        <FullScreenImageModal
+          isOpen={showFullScreenModal}
+          onClose={() => setShowFullScreenModal(false)}
+          images={historyItems.map(convertToRefinedPromptItem)}
+          currentIndex={fullScreenImageIndex}
+          onImageChange={handleFullScreenImageChange}
+          onImageUpdate={handleFullScreenImageUpdate}
+        />
+      )}
+
+      {/* Download Modal */}
+      {showDownloadModal && downloadItem && (
+        <DownloadModal
+          isOpen={showDownloadModal}
+          onClose={() => setShowDownloadModal(false)}
+          imageUrl={downloadItem.imageUrl}
+          filename={`${(downloadItem.title || 'image').toLowerCase().replace(/\s+/g, '-')}.png`}
+          title={`Download ${downloadItem.title || 'Image'}`}
         />
       )}
     </div>

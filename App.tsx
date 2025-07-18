@@ -17,6 +17,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { createHistoryService } from './services/historyService';
 import { getProgressService, GenerationProgress } from './services/progressService';
 import DownloadModal from './components/DownloadModal';
+import FullScreenImageModal from './components/FullScreenImageModal';
 import convex from './lib/convex';
 
 type WorkflowMode = 'simple' | 'advanced' | null;
@@ -114,6 +115,30 @@ const App: React.FC = () => {
   const [downloadImageUrl, setDownloadImageUrl] = useState<string>('');
   const [downloadFilename, setDownloadFilename] = useState<string>('');
   const [downloadTitle, setDownloadTitle] = useState<string>('');
+
+  // Full-screen modal state
+  const [showFullScreenModal, setShowFullScreenModal] = useState(false);
+  const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
+
+  // Full-screen modal handlers
+  const handleImageClick = (index: number) => {
+    const validImages = refinedPrompts.filter(item => item.imageUrl);
+    if (validImages.length === 0) return;
+    
+    const actualIndex = refinedPrompts.findIndex(item => item.imageUrl && refinedPrompts.indexOf(item) >= index);
+    setFullScreenImageIndex(actualIndex >= 0 ? actualIndex : 0);
+    setShowFullScreenModal(true);
+  };
+
+  const handleFullScreenImageChange = (newIndex: number) => {
+    setFullScreenImageIndex(newIndex);
+  };
+
+  const handleFullScreenImageUpdate = (updatedImage: RefinedPromptItem) => {
+    setRefinedPrompts(prev => prev.map(item => 
+      item.id === updatedImage.id ? updatedImage : item
+    ));
+  };
 
   // Subscribe to progress updates
   useEffect(() => {
@@ -878,7 +903,15 @@ const App: React.FC = () => {
                     <h4 className="font-semibold text-slate-700 text-sm mb-2 truncate">{item.title}</h4>
                     <div className="aspect-[3/4] bg-slate-100 rounded flex items-center justify-center mb-2 overflow-hidden border border-slate-200">
                         {item.isLoadingImage && <Spinner className="w-8 h-8 text-sky-500" />}
-                          {item.imageUrl && !item.isLoadingImage && <img src={item.imageUrl} onLoad={(e) => e.currentTarget.classList.remove('blur-lg')} alt={item.title} className="w-full h-full object-cover rounded blur-lg transition-all duration-700" />}
+                          {item.imageUrl && !item.isLoadingImage && (
+                            <img 
+                              src={item.imageUrl} 
+                              onLoad={(e) => e.currentTarget.classList.remove('blur-lg')} 
+                              alt={item.title} 
+                              className="w-full h-full object-cover rounded blur-lg transition-all duration-700 cursor-pointer hover:scale-105 transition-transform" 
+                              onClick={() => handleImageClick(displayItems.indexOf(item))}
+                            />
+                          )}
                           {!item.imageUrl && !item.isLoadingImage && !item.error && <PlaceholderIcon className="w-12 h-12 text-slate-300" />}
                         {item.error && !item.isLoadingImage && (
                             <div className="p-2 text-center">
@@ -1268,6 +1301,18 @@ const App: React.FC = () => {
           imageUrl={downloadImageUrl}
           filename={downloadFilename}
           title={downloadTitle}
+        />
+      )}
+
+      {/* Full Screen Image Modal */}
+      {showFullScreenModal && (
+        <FullScreenImageModal
+          isOpen={showFullScreenModal}
+          onClose={() => setShowFullScreenModal(false)}
+          images={refinedPrompts}
+          currentIndex={fullScreenImageIndex}
+          onImageChange={handleFullScreenImageChange}
+          onImageUpdate={handleFullScreenImageUpdate}
         />
       )}
 
