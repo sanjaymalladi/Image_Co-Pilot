@@ -451,9 +451,9 @@ const App: React.FC = () => {
             remainingResults.push({ id: p.id, error: err.message || 'Failed' });
           }
           
-          // Add a 5-second delay between image generation requests
+          // Add a 1-second delay between image generation requests
           if (i < remaining.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
         }
 
