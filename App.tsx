@@ -18,11 +18,13 @@ import { createHistoryService } from './services/historyService';
 import { getProgressService, GenerationProgress } from './services/progressService';
 import DownloadModal from './components/DownloadModal';
 import FullScreenImageModal from './components/FullScreenImageModal';
+import { PhotoshootToggle } from './components/PhotoshootToggle';
+import { PhotoshootType, getPhotoshootLabels, getDefaultPhotoshootType, PromptData } from './types/photoshoot';
 import convex from './lib/convex';
 
-type WorkflowMode = 'simple' | 'advanced' | null;
 type AppMode = 'generation' | 'history';
 
+// Keep FashionPromptData for backward compatibility during transition
 export interface FashionPromptData {
   garmentAnalysis: string;
   qaChecklist: string;
@@ -41,7 +43,7 @@ export interface RefinedPromptItem {
 }
 
 const App: React.FC = () => {
-  const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('simple');
+  const [photoshootType, setPhotoshootType] = useState<PhotoshootType>(getDefaultPhotoshootType());
   const [appMode, setAppMode] = useState<AppMode>('generation');
   const { user } = useUser();
 
@@ -175,9 +177,14 @@ const App: React.FC = () => {
     progressService.resetProgress();
   };
 
-  const handleModeChange = (mode: WorkflowMode) => {
+  const handlePhotoshootTypeChange = (type: PhotoshootType) => {
     resetAllState();
-    setWorkflowMode(mode);
+    setPhotoshootType(type);
+    
+    // Provide visual feedback for mode change
+    const labels = getPhotoshootLabels(type);
+    // Could add a toast notification here in the future
+    console.log(`Switched to ${labels.mainItemName} photoshoot mode`);
   }
 
   const clearSubsequentFashionStates = () => {
@@ -307,7 +314,8 @@ const App: React.FC = () => {
 
   const handleGenerateFashionAnalysis = async () => {
     if (fashionGarmentFiles.length === 0) {
-      setError(`Please upload 1 or ${MAX_FILES_FASHION_PROMPT} garment image(s).`);
+      const labels = getPhotoshootLabels(photoshootType);
+      setError(labels.errorUploadMessage);
       return;
     }
     setIsLoading(true);
@@ -319,10 +327,11 @@ const App: React.FC = () => {
       const backgroundRefImageInputs = await Promise.all(fashionBackgroundRefFiles.map(fileToBase64WithType));
       const modelRefImageInputs = await Promise.all(fashionModelRefFiles.map(fileToBase64WithType));
 
-      const results = await generateFashionAnalysisAndInitialJsonPrompt(garmentImageInputs, backgroundRefImageInputs.length > 0 ? backgroundRefImageInputs : undefined, modelRefImageInputs.length > 0 ? modelRefImageInputs : undefined);
+      const results = await generateFashionAnalysisAndInitialJsonPrompt(garmentImageInputs, backgroundRefImageInputs.length > 0 ? backgroundRefImageInputs : undefined, modelRefImageInputs.length > 0 ? modelRefImageInputs : undefined, photoshootType);
       setFashionPromptData(results);
     } catch (err: any) {
-      setError(err.message || "Failed to generate fashion analysis.");
+      const labels = getPhotoshootLabels(photoshootType);
+      setError(err.message || `Failed to generate ${labels.mainItemName} analysis.`);
       setFashionPromptData(null);
     }
     setIsLoading(false);
@@ -358,12 +367,13 @@ const App: React.FC = () => {
   
   const handleQaAndRefinePrompts = async () => {
     if (!fashionPromptData || !generatedFashionImageFile || fashionGarmentFiles.length === 0) {
-      setError("Missing data: Garment image(s), generated QA image, or initial analysis is missing.");
+      const labels = getPhotoshootLabels(photoshootType);
+      setError(`Missing data: ${labels.mainItemName.charAt(0).toUpperCase() + labels.mainItemName.slice(1)} image(s), generated QA image, or initial analysis is missing.`);
       return;
     }
 
-    // Initialize progress tracking for advanced mode
-    const steps = progressService.getStepsForMode('advanced', 'all', 8);
+    // Initialize progress tracking for streamlined mode
+    const steps = progressService.getStepsForMode('simple', 'all', 8);
     progressService.startProgress(steps);
     progressService.updateStep('manual-qa', 'completed'); // QA image already uploaded
     
@@ -376,7 +386,7 @@ const App: React.FC = () => {
       const originalGarmentImageInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
       const generatedFashionImageInput = await fileToBase64WithType(generatedFashionImageFile);
 
-      const results = await performQaAndGenerateStudioPrompts(originalGarmentImageInputs, generatedFashionImageInput, fashionPromptData);
+      const results = await performQaAndGenerateStudioPrompts(originalGarmentImageInputs, generatedFashionImageInput, fashionPromptData, photoshootType);
       progressService.updateStep('prompt-refinement', 'completed');
       
       setRefinedPrompts(results.map(p => ({
@@ -429,7 +439,8 @@ const App: React.FC = () => {
   
   const handleSimpleModeGeneration = async (packType: 'studio' | 'lifestyle' | 'all') => {
     if (fashionGarmentFiles.length === 0) {
-        setError(`Please upload 1 or ${MAX_FILES_FASHION_PROMPT} garment image(s).`);
+        const labels = getPhotoshootLabels(photoshootType);
+        setError(labels.errorUploadMessage);
         return;
     }
     
@@ -448,7 +459,7 @@ const App: React.FC = () => {
         const backgroundRefImageInputs = await Promise.all(fashionBackgroundRefFiles.map(fileToBase64WithType));
         const modelRefImageInputs = await Promise.all(fashionModelRefFiles.map(fileToBase64WithType));
         
-        const analysisData = await generateFashionAnalysisAndInitialJsonPrompt(garmentImageInputs, backgroundRefImageInputs.length > 0 ? backgroundRefImageInputs : undefined, modelRefImageInputs.length > 0 ? modelRefImageInputs : undefined);
+        const analysisData = await generateFashionAnalysisAndInitialJsonPrompt(garmentImageInputs, backgroundRefImageInputs.length > 0 ? backgroundRefImageInputs : undefined, modelRefImageInputs.length > 0 ? modelRefImageInputs : undefined, photoshootType);
         progressService.updateStep('analyze', 'completed');
 
         // Prepare data URLs once to reuse across calls
@@ -461,7 +472,7 @@ const App: React.FC = () => {
 
         // Step 3: Create optimized prompts
         progressService.updateStep('prompt-refinement', 'active');
-        const finalPrompts = await performQaAndGenerateStudioPrompts(garmentImageInputs, qaImageInput, analysisData);
+        const finalPrompts = await performQaAndGenerateStudioPrompts(garmentImageInputs, qaImageInput, analysisData, photoshootType);
         progressService.updateStep('prompt-refinement', 'completed');
         
         const promptsToGenerate = finalPrompts
@@ -579,7 +590,8 @@ const App: React.FC = () => {
         }));
 
     } catch (err: any) {
-        setError(err.message || "Failed to generate fashion image pack.");
+        const labels = getPhotoshootLabels(photoshootType);
+        setError(err.message || `Failed to generate ${labels.mainItemName} image pack.`);
         progressService.errorProgress(progressService.getCurrentProgress()?.currentStepId || 'unknown', err.message || 'Generation failed');
     } finally {
         // Finalize progress
@@ -607,7 +619,7 @@ const App: React.FC = () => {
         // Generate a QA image using the garment references
         const qaImageInput = await generateInitialQaImage(fashionPromptData.initialJsonPrompt, garmentDataUrls);
 
-        const results = await performQaAndGenerateStudioPrompts(originalGarmentImageInputs, qaImageInput, fashionPromptData);
+        const results = await performQaAndGenerateStudioPrompts(originalGarmentImageInputs, qaImageInput, fashionPromptData, photoshootType);
         
         setRefinedPrompts(results.map(p => ({
             id: `${p.title.replace(/\s+/g, '-')}-${Date.now()}`,
@@ -628,7 +640,8 @@ const App: React.FC = () => {
     // --- Case 1: Generate image for a specific refined prompt item ---
     if (itemId) {
       if (fashionGarmentFiles.length === 0) {
-        setError("Please upload at least one garment image before generating.");
+        const labels = getPhotoshootLabels(photoshootType);
+        setError(`Please upload at least one ${labels.mainItemName} image before generating.`);
         return;
       }
 
@@ -670,7 +683,8 @@ const App: React.FC = () => {
 
     // --- Case 2: Original single-image generation flow (initial JSON prompt) ---
     if (!fashionPromptData || !generatedFashionImageFile || fashionGarmentFiles.length === 0) {
-      setError("Missing data: Garment image(s), generated QA image, or initial analysis is missing.");
+      const labels = getPhotoshootLabels(photoshootType);
+      setError(`Missing data: ${labels.mainItemName.charAt(0).toUpperCase() + labels.mainItemName.slice(1)} image(s), generated QA image, or initial analysis is missing.`);
       return;
     }
 
@@ -937,7 +951,7 @@ const App: React.FC = () => {
                             Download
                           </Button>
                         )}
-                        {workflowMode !== 'simple' && (
+                        {(
                      <Button 
                         onClick={() => copyRefinedPrompt(item.id)}
                         variant="secondary" 
@@ -958,16 +972,19 @@ const App: React.FC = () => {
       );
   }
 
-  const renderUploaders = () => (
-    <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100 space-y-6">
-      <p className="text-center text-slate-600 -mt-2">Upload your garment, and optional background or model references.</p>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {renderFileUploadArea('garment', fashionGarmentFiles, fashionGarmentPreviewUrls, MAX_FILES_FASHION_PROMPT, "Garment Image(s)", GarmentIcon)}
-        {renderFileUploadArea('backgroundRef', fashionBackgroundRefFiles, fashionBackgroundRefPreviewUrls, MAX_FILES_FASHION_BACKGROUND_REF, "Background Ref (Optional)", BackgroundIcon)}
-        {renderFileUploadArea('modelRef', fashionModelRefFiles, fashionModelRefPreviewUrls, MAX_FILES_FASHION_MODEL_REF, "Model Ref (Optional)", ModelIcon)}
+  const renderUploaders = () => {
+    const labels = getPhotoshootLabels(photoshootType);
+    return (
+      <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100 space-y-6">
+        <p className="text-center text-slate-600 -mt-2">Upload your {labels.mainItemName}, and optional background or model references.</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {renderFileUploadArea('garment', fashionGarmentFiles, fashionGarmentPreviewUrls, MAX_FILES_FASHION_PROMPT, labels.uploadMainLabel, GarmentIcon)}
+          {renderFileUploadArea('backgroundRef', fashionBackgroundRefFiles, fashionBackgroundRefPreviewUrls, MAX_FILES_FASHION_BACKGROUND_REF, "Background Ref (Optional)", BackgroundIcon)}
+          {renderFileUploadArea('modelRef', fashionModelRefFiles, fashionModelRefPreviewUrls, MAX_FILES_FASHION_MODEL_REF, "Model Ref (Optional)", ModelIcon)}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col items-center p-4 md:p-8 selection:bg-sky-500 selection:text-white">
@@ -977,17 +994,11 @@ const App: React.FC = () => {
           <img src="https://framerusercontent.com/images/Sn5VF1Si4Nr6jofjVzhOWDq5sGo.svg" alt="Logo" className="h-8 w-auto" />
         </a>
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className={`text-sm font-medium ${workflowMode === 'simple' ? 'text-secondary' : 'text-muted'}`}>Simple</span>
-            <button
-              onClick={() => handleModeChange(workflowMode === 'advanced' ? 'simple' : 'advanced')}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${workflowMode === 'advanced' ? 'bg-secondary' : 'bg-muted'}`}
-              aria-label="Toggle workflow mode"
-            >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${workflowMode === 'advanced' ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
-            <span className={`text-sm font-medium ${workflowMode === 'advanced' ? 'text-secondary' : 'text-muted'}`}>Advanced</span>
-          </div>
+          <PhotoshootToggle
+            photoshootType={photoshootType}
+            onPhotoshootTypeChange={handlePhotoshootTypeChange}
+            disabled={isLoading}
+          />
 
           <SignedOut>
             <SignInButton mode="modal">
@@ -1019,9 +1030,9 @@ const App: React.FC = () => {
 
         {error && <Alert type="error" message={error} onClose={() => setError(null)} />}
 
-        {workflowMode && renderUploaders()}
+        {renderUploaders()}
 
-        {workflowMode === 'simple' && fashionGarmentFiles.length > 0 && (
+        {fashionGarmentFiles.length > 0 && (
           <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100 space-y-4">
             <h3 className="text-lg font-semibold text-secondary text-center">Generate Image Pack</h3>
             <p className="text-center text-sm text-slate-500">One click to get a full set of professional images.</p>
@@ -1046,6 +1057,18 @@ const App: React.FC = () => {
                   <span className="text-slate-700">Lifestyle Pack (4 Images)</span>
                 </label>
               </div>
+              
+              {/* Pack descriptions */}
+              {(selectedPacks.studio || selectedPacks.lifestyle) && (
+                <div className="text-sm text-slate-600 space-y-1">
+                  {selectedPacks.studio && (
+                    <p><strong>Studio:</strong> {getPhotoshootLabels(photoshootType).studioDescription}</p>
+                  )}
+                  {selectedPacks.lifestyle && (
+                    <p><strong>Lifestyle:</strong> {getPhotoshootLabels(photoshootType).lifestyleDescription}</p>
+                  )}
+                </div>
+              )}
               
               <Button
                 onClick={handleGenerateSelectedPacks}
@@ -1096,151 +1119,14 @@ const App: React.FC = () => {
 
 
 
-        {workflowMode === 'simple' && (refinedPrompts.length > 0 || isLoading) && (
+        {(refinedPrompts.length > 0 || isLoading) && (
           <div className="space-y-4">
-            <h3 className="text-xl font-semibold text-secondary text-center">Generated Images</h3>
+            <h3 className="text-xl font-semibold text-secondary text-center">Generated {getPhotoshootLabels(photoshootType).mainItemName.charAt(0).toUpperCase() + getPhotoshootLabels(photoshootType).mainItemName.slice(1)} Images</h3>
             {renderImageResultGrid(refinedPrompts)}
           </div>
         )}
 
-        {workflowMode === 'advanced' && fashionGarmentFiles.length > 0 && (
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100">
-              <h3 className="text-lg font-semibold text-secondary text-center mb-4">Step 1: Analyze Garment</h3>
-              <Button onClick={handleGenerateFashionAnalysis} disabled={isLoading} className="w-full text-lg">
-                {isLoading && !fashionPromptData ? <Spinner /> : <SparklesIcon className="w-5 h-5"/>} Analyze & Generate Initial Prompt
-              </Button>
-            </div>
-
-            {fashionPromptData && !isLoading && (
-              <div className="space-y-6">
-                  <h3 className="text-2xl font-semibold text-secondary text-center">Step 2: Review Analysis</h3>
-                  <div className="bg-white p-5 rounded-lg shadow-md border border-slate-100">
-                      <h4 className="font-semibold text-secondary mb-2">Garment Analysis</h4>
-                      <p className="text-slate-800 bg-slate-100 p-3 rounded-md whitespace-pre-wrap text-sm leading-relaxed pretty-scrollbar max-h-60 overflow-y-auto">{fashionPromptData.garmentAnalysis}</p>
-                  </div>
-                  <div className="bg-white p-5 rounded-lg shadow-md border border-slate-100">
-                      <h4 className="font-semibold text-secondary mb-2">QA Checklist</h4>
-                      <p className="text-slate-800 bg-slate-100 p-3 rounded-md whitespace-pre-wrap text-sm leading-relaxed pretty-scrollbar max-h-60 overflow-y-auto">{fashionPromptData.qaChecklist}</p>
-                  </div>
-                  <div className="bg-white p-5 rounded-lg shadow-md border border-slate-100">
-                      <h4 className="font-semibold text-secondary mb-2">Initial JSON Prompt</h4>
-                      <p className="text-slate-800 bg-slate-100 p-3 rounded-md whitespace-pre-wrap text-sm leading-relaxed pretty-scrollbar max-h-72 overflow-y-auto">{fashionPromptData.initialJsonPrompt}</p>
-                      <div className="flex items-center gap-4 mt-4">
-                        <Button onClick={copyInitialJsonPrompt} variant="secondary">
-                            {fashionInitialJsonPromptCopied ? <CheckIcon className="w-5 h-5 text-green-500" /> : <ClipboardIcon className="w-5 h-5" />}
-                            {fashionInitialJsonPromptCopied ? 'Copied!' : 'Copy Prompt'}
-                        </Button>
-                        <Button onClick={() => handleGenerateSingleImage()} disabled={isLoading}>
-                            {isLoading ? <Spinner /> : <SparklesIcon className="w-5 h-5" />}
-                            Generate Image
-                        </Button>
-                        <Button onClick={handleAutoQa} disabled={isLoading || !generatedFashionImagePreviewUrl} variant="secondary">
-                            {isLoading ? <Spinner /> : <WandSparklesIcon className="w-5 h-5" />}
-                            Send to QA
-                        </Button>
-                      </div>
-                  </div>
-                  
-                  <div className="border-t-2 border-slate-200 pt-6 mt-8 space-y-6">
-                      <h3 className="text-2xl font-semibold text-secondary text-center">Step 3: QA & Final Prompt Generation</h3>
-                      <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100">
-                          <label htmlFor="qa-image-upload" className="block text-md font-medium text-sky-500 mb-3 text-center">Upload Generated Image (from Initial Prompt)</label>
-                          {generatedFashionImagePreviewUrl ? (
-                              <div className="text-center">
-                                  <img src={generatedFashionImagePreviewUrl} alt="QA preview" className="max-h-72 w-auto mx-auto rounded-md shadow-md mb-3" />
-                                  <Button variant="secondary" onClick={clearGeneratedFashionImage}><XCircleIcon className="w-4 h-4" /> Clear Image</Button>
-                              </div>
-                          ) : (
-                              <div onClick={() => document.getElementById('qa-image-upload')?.click()} className="border-2 border-dashed border-slate-300 hover:border-sky-500 rounded-lg p-8 text-center cursor-pointer max-w-md mx-auto">
-                                <input type="file" id="qa-image-upload" accept="image/*" onChange={handleGeneratedFashionImageFileChange} className="hidden" />
-                                <UploadIcon className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-                                <p className="text-slate-500">Click or drag & drop QA image.</p>
-                              </div>
-                          )}
-                          <Button onClick={handleQaAndRefinePrompts} disabled={isLoading || !generatedFashionImageFile} className="w-full mt-6 text-lg">
-                              {isLoading && refinedPrompts.length === 0 ? <Spinner /> : <WandSparklesIcon className="w-5 h-5" />}
-                              Perform QA & Generate Final Prompts
-                          </Button>
-                      </div>
-                  </div>
-              </div>
-            )}
-            
-            {refinedPrompts.length > 0 && !isLoading && (
-              <div className="border-t-2 border-slate-200 pt-6 mt-8 space-y-6">
-                <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-3 rounded-lg shadow-md border border-slate-100">
-                    <h3 className="text-xl font-semibold text-secondary">Step 4: Generate Final Images</h3>
-                    <div className="flex items-center space-x-2">
-                        <span className={`text-sm font-medium ${isDevMode ? 'text-slate-500' : 'text-secondary'}`}>Images</span>
-                        <button onClick={() => setIsDevMode(!isDevMode)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isDevMode ? 'bg-slate-400' : 'bg-sky-600'}`}>
-                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isDevMode ? 'translate-x-6' : 'translate-x-1'}`} />
-                        </button>
-                        <span className={`text-sm font-medium ${isDevMode ? 'text-secondary' : 'text-slate-500'}`}>Prompts</span>
-                    </div>
-                </div>
-
-                {isDevMode ? (
-                  <div className="space-y-4">
-                    {refinedPrompts.map((item) => (
-                      <div key={item.id} className="bg-white p-5 rounded-lg shadow-md border border-slate-100">
-                        <div className="flex justify-between items-center mb-2">
-                          <h4 className="font-semibold text-sky-500">{item.title}</h4>
-                          {item.isLoadingImage && <Spinner className="w-5 h-5 text-sky-500"/>}
-                        </div>
-                        <p className="text-slate-800 bg-slate-100 p-3 rounded-md whitespace-pre-wrap text-sm pretty-scrollbar max-h-48 overflow-y-auto">{item.prompt}</p>
-                        <div className="flex items-center flex-wrap gap-4 mt-4">
-                            <Button onClick={() => copyRefinedPrompt(item.id)} variant="secondary" size="sm" disabled={item.isLoadingImage}>
-                               {item.isCopied ? <CheckIcon className="w-4 h-4 text-green-500"/> : <ClipboardIcon className="w-4 h-4" />} {item.isCopied ? 'Copied' : 'Copy'}
-                            </Button>
-                             <select
-                                value={item.aspectRatio}
-                                onChange={(e) => handleAspectRatioChange(item.id, e.target.value)}
-                                disabled={item.isLoadingImage}
-                                className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-sky-500 focus:border-sky-500 p-2 disabled:opacity-50"
-                                aria-label="Aspect Ratio"
-                            >
-                                <option value="3:4">3:4 (Portrait)</option>
-                                <option value="4:3">4:3 (Landscape)</option>
-                                <option value="1:1">1:1 (Square)</option>
-                                <option value="16:9">16:9 (Widescreen)</option>
-                                <option value="9:16">9:16 (Tall)</option>
-                            </select>
-                            <Button onClick={() => handleGenerateSingleImage(item.id)} size="sm" disabled={item.isLoadingImage}>
-                              {item.isLoadingImage ? <Spinner/> : <SparklesIcon className="w-4 h-4"/>} Generate Image
-                            </Button>
-                        </div>
-                        {item.imageUrl && !item.isLoadingImage && (
-                            <div className="mt-4">
-                                <img src={item.imageUrl} onLoad={(e) => e.currentTarget.classList.remove('blur-lg')} alt={`Generated: ${item.title}`} className="rounded-lg shadow-md border border-slate-200 max-w-xs mx-auto blur-lg transition-all duration-700" />
-                            </div>
-                        )}
-                         {item.error && !item.isLoadingImage && (
-                            <div className="mt-3 text-red-600 text-sm p-2 bg-red-50 rounded border border-red-200">{item.error}</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    <div className="flex flex-col sm:flex-row gap-4 bg-white p-4 rounded-lg shadow-md border border-slate-100">
-                      <Button onClick={() => handleImagePackGeneration('studio')} disabled={isLoading} className="flex-1">
-                          {isLoading ? <Spinner/> : <SparklesIcon className="w-5 h-5"/>} Generate 4 Studio Images
-                      </Button>
-                      <Button onClick={() => handleImagePackGeneration('lifestyle')} disabled={isLoading} className="flex-1">
-                          {isLoading ? <Spinner/> : <SparklesIcon className="w-5 h-5"/>} Generate 4 Lifestyle Images
-                      </Button>
-                      <Button onClick={() => handleImagePackGeneration('all')} disabled={isLoading} variant="secondary" className="flex-1">
-                          {isLoading ? <Spinner/> : <SparklesIcon className="w-5 h-5"/>} Generate All 8 Images
-                      </Button>
-                    </div>
-                    {renderImageResultGrid(refinedPrompts)}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+        {/* Advanced workflow removed - replaced with single streamlined workflow that adapts to photoshoot type */}
       </div>
 
       {/* History View */}

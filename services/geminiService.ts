@@ -2,7 +2,8 @@
 import { GoogleGenAI, GenerateContentResponse, Part } from "@google/genai";
 import { generateImageViaReplicate } from "./replicateService";
 import { FileConversionResult } from "../utils/fileUtils";
-import { FashionPromptData, RefinedPromptItem } from "../App"; 
+import { FashionPromptData, RefinedPromptItem } from "../App";
+import { PhotoshootType, PromptData } from "../types/photoshoot"; 
 
 const API_KEY = process.env.API_KEY;
 
@@ -107,36 +108,51 @@ export const generateImagePack = async (promptsToGenerate: RefinedPromptItem[]):
 export const generateFashionAnalysisAndInitialJsonPrompt = async (
     garmentImages: ImageInput[],
     backgroundRefImages?: ImageInput[],
-    modelRefImages?: ImageInput[]
+    modelRefImages?: ImageInput[],
+    photoshootType: PhotoshootType = 'garment'
 ): Promise<FashionPromptData> => {
     if (!garmentImages || garmentImages.length === 0 || garmentImages.length > 2) {
-        throw new Error("Please provide 1 or 2 garment images.");
+        const itemName = photoshootType === 'garment' ? 'garment' : 'product';
+        throw new Error(`Please provide 1 or 2 ${itemName} images.`);
     }
     
-    let imageProcessingInstruction = "You will be provided with one image of a garment. Analyze it accordingly.";
+    const itemName = photoshootType === 'garment' ? 'garment' : 'product';
+    const itemNameCapitalized = itemName.charAt(0).toUpperCase() + itemName.slice(1);
+    
+    let imageProcessingInstruction = `You will be provided with one image of a ${itemName}. Analyze it accordingly.`;
     if (garmentImages.length === 2) {
-        imageProcessingInstruction = `You will be provided with two garment images.
+        const exampleItems = photoshootType === 'garment' 
+            ? 'a top and a bottom, or two different dresses'
+            : 'a main product and an accessory, or two complementary products';
+        const exampleAnalysis = photoshootType === 'garment'
+            ? 'Red Silk Blouse'
+            : 'Wireless Headphones';
+        const exampleAnalysis2 = photoshootType === 'garment'
+            ? 'Black Denim Jeans'
+            : 'Phone Case';
+            
+        imageProcessingInstruction = `You will be provided with two ${itemName} images.
 First, determine if these two images show:
-(a) The same garment from different perspectives or details.
-(b) Two distinct garments (e.g., a top and a bottom, or two different dresses).
+(a) The same ${itemName} from different perspectives or details.
+(b) Two distinct ${itemName}s (e.g., ${exampleItems}).
 
-If **(a) same garment**: Synthesize all information from both images into a single, comprehensive analysis for that one garment. The 'initialJsonPrompt' should feature this single garment.
-If **(b) two distinct garments**:
-    - Your 'garmentAnalysis' string must clearly separate the analysis for each garment. Use a format like:
-      '**Garment 1 ([briefly name/describe garment from image 1, e.g., Red Silk Blouse]):**\\n[Detailed analysis of Garment 1]\\n\\n**Garment 2 ([briefly name/describe garment from image 2, e.g., Black Denim Jeans]):**\\n[Detailed analysis of Garment 2]'
-    - Your 'qaChecklist' string must similarly separate checks for each distinct garment, using a similar heading format.
-    - Your 'initialJsonPrompt' (Step 4) must aim to generate an image featuring **both distinct garments** styled appropriately together on a model (or models, if logical for the garments). The prompt should describe this complete look or ensemble clearly.
+If **(a) same ${itemName}**: Synthesize all information from both images into a single, comprehensive analysis for that one ${itemName}. The 'initialJsonPrompt' should feature this single ${itemName}.
+If **(b) two distinct ${itemName}s**:
+    - Your '${itemName}Analysis' string must clearly separate the analysis for each ${itemName}. Use a format like:
+      '**${itemNameCapitalized} 1 ([briefly name/describe ${itemName} from image 1, e.g., ${exampleAnalysis}]):**\\n[Detailed analysis of ${itemNameCapitalized} 1]\\n\\n**${itemNameCapitalized} 2 ([briefly name/describe ${itemName} from image 2, e.g., ${exampleAnalysis2}]):**\\n[Detailed analysis of ${itemNameCapitalized} 2]'
+    - Your 'qaChecklist' string must similarly separate checks for each distinct ${itemName}, using a similar heading format.
+    - Your 'initialJsonPrompt' (Step 4) must aim to generate an image featuring **both distinct ${itemName}s** styled appropriately together${photoshootType === 'garment' ? ' on a model (or models, if logical for the garments)' : ' in a cohesive scene'}. The prompt should describe this complete ${photoshootType === 'garment' ? 'look or ensemble' : 'product arrangement or lifestyle scene'} clearly.
 This distinction is crucial for accurate output.`;
     }
 
-    const systemInstruction = `You are an AI assistant specialized in fashion image prompting. {{image_processing_instruction}}
+    const systemInstruction = `You are an AI assistant specialized in ${photoshootType === 'garment' ? 'fashion' : 'product'} image prompting. {{image_processing_instruction}}
 You may also receive optional background reference images and/or model reference images.
-Follow these steps extremely carefully and return the output as a single JSON object with three keys: "garmentAnalysis", "qaChecklist", and "initialJsonPrompt".
+Follow these steps extremely carefully and return the output as a single JSON object with three keys: "${itemName}Analysis", "qaChecklist", and "initialJsonPrompt".
 
 🧩 Step 1: Input Analysis
-- Study the input garment image(s) in detail. (Handle 1 or 2 images as per the initial instruction above).
-- Extract and document the following attributes. If analyzing two distinct garments, do this for each:
-    - Garment type (e.g., T-shirt, kurta, dress, onesie, jacket, trousers)
+- Study the input ${itemName} image(s) in detail. (Handle 1 or 2 images as per the initial instruction above).
+- Extract and document the following attributes. If analyzing two distinct ${itemName}s, do this for each:
+${photoshootType === 'garment' ? `    - Garment type (e.g., T-shirt, kurta, dress, onesie, jacket, trousers)
     - Target wearer (infant / child / adult male / adult female)
     - Fabric type and weave (cotton, silk, denim, wool, polyester, jersey, etc.)
     - Color tone (with nuance: e.g., muted dusty blue, vibrant cherry red, matte olive green)
@@ -149,17 +165,29 @@ Follow these steps extremely carefully and return the output as a single JSON ob
     - Fit style (relaxed, slim, oversized, flared)
     - Trims and additional details (pockets, lace, elastics, belts, hoodie)
     - Edge finishing (folded, topstitched, raw hem, piped)
-    - Drape and structure (soft flowy, structured crisp, rigid denim, etc.)
-- Format this 'garmentAnalysis' as a multi-line string. If two distinct garments, ensure clear separation as instructed.
+    - Drape and structure (soft flowy, structured crisp, rigid denim, etc.)` : `    - Product type and category (e.g., electronics, home goods, beauty, accessories, toys)
+    - Target user/demographic (infant / child / adult / professional / hobbyist)
+    - Materials and construction (plastic, metal, glass, wood, fabric, composite materials)
+    - Color scheme and finish (with nuance: e.g., matte black, brushed aluminum, glossy white)
+    - Surface texture and treatment (smooth, textured, rubberized, polished)
+    - Size and proportions (compact, oversized, ergonomic dimensions)
+    - Key features and functionality (buttons, ports, displays, moving parts)
+    - Brand elements and logos (placement, style, prominence)
+    - Packaging or presentation (if visible in product shots)
+    - Design style (modern, vintage, minimalist, industrial, playful)
+    - Quality indicators (premium materials, craftsmanship details)
+    - Use context and scenarios (professional, casual, outdoor, indoor)`}
+- Format this '${itemName}Analysis' as a multi-line string. If two distinct ${itemName}s, ensure clear separation as instructed.
 {{reference_image_instructions}}
 - Also consider any provided reference images for background or model appearance when formulating descriptions later, but the core garment analysis here is based on the garment images ONLY.
 
 🛡 Step 2: Checklist Preparation
-- Based on the extracted garment attributes from Step 1, dynamically build a strict QA checklist. If analyzing two distinct garments, create checklist sections for each.
-- Add special checks based on garment type(s).
-    - Example: For suits → lapel sharpness, vent symmetry.
-    - Example: For baby onesies → snap closure spacing, fabric softness.
-- Format this 'qaChecklist' as a multi-line string. If two distinct garments, ensure clear separation.
+- Based on the extracted ${itemName} attributes from Step 1, dynamically build a strict QA checklist. If analyzing two distinct ${itemName}s, create checklist sections for each.
+- Add special checks based on ${itemName} type(s).
+${photoshootType === 'garment' ? `    - Example: For suits → lapel sharpness, vent symmetry.
+    - Example: For baby onesies → snap closure spacing, fabric softness.` : `    - Example: For electronics → button placement, screen clarity, port alignment.
+    - Example: For beauty products → label readability, packaging integrity, product visibility.`}
+- Format this 'qaChecklist' as a multi-line string. If two distinct ${itemName}s, ensure clear separation.
 
 🎯 Step 3: Set Ultra-Strict QA Mode
 - (This is an internal mode for you for future QA if applicable. No specific text output needed for this key in THIS response, but keep it in mind.)
@@ -167,17 +195,18 @@ Follow these steps extremely carefully and return the output as a single JSON ob
 📈 Step 4: Give a JSON prompt for generating an output
 - Based on the input analysis (Step 1) and the QA checklist (Step 2), give a detailed JSON prompt string.
 - This JSON prompt string should be suitable for use in an AI image generation model.
-- The prompt should aim to generate a premium image (for socials and print) featuring the garment(s) on an appropriate person/people (inferred from garment analysis).
-- If one garment was analyzed, feature that garment. If two distinct garments were analyzed, the prompt must feature **both distinct garments** styled as an ensemble or complete look.
+- The prompt should aim to generate a premium image (for socials and print) featuring the ${itemName}(s)${photoshootType === 'garment' ? ' on an appropriate person/people (inferred from garment analysis)' : ' in an appropriate context or setting'}.
+- If one ${itemName} was analyzed, feature that ${itemName}. If two distinct ${itemName}s were analyzed, the prompt must feature **both distinct ${itemName}s**${photoshootType === 'garment' ? ' styled as an ensemble or complete look' : ' arranged cohesively in the scene'}.
 - The prompt must specify a **STUDIO background**.
     - If background reference images were provided (see Step 1 instructions), ensure the studio background description (e.g., seamless paper color, texture, simple props) is creatively inspired by their style, mood, or key elements, while *remaining a clean studio setup*. For example, if a reference shows a moody forest, the studio background might be "dark olive green seamless paper with subtle dappled lighting effect" rather than an actual forest.
     - If no background references, use a standard professional studio background (e.g., "light grey seamless paper," "plain white cyclorama wall").
 - The prompt must specify professional studio lighting.
-- If model reference images were provided (see Step 1 instructions), the description of the model in this JSON prompt should aim to have the generated model resemble the characteristics (features, hair, ethnicity, body type if discernible and appropriate) from those reference images.
-- Include model pose(s) and encourage variations to ensure diverse outputs when used.
+${photoshootType === 'garment' ? `- If model reference images were provided (see Step 1 instructions), the description of the model in this JSON prompt should aim to have the generated model resemble the characteristics (features, hair, ethnicity, body type if discernible and appropriate) from those reference images.
+- Include model pose(s) and encourage variations to ensure diverse outputs when used.` : `- Focus on product presentation that highlights key features and benefits.
+- Consider appropriate props or context that enhance the product's appeal without overwhelming it.`}
 - This "initialJsonPrompt" must be a single string (copy-paste ready).
 
-Return a single JSON object with the keys "garmentAnalysis", "qaChecklist", and "initialJsonPrompt".
+Return a single JSON object with the keys "${itemName}Analysis", "qaChecklist", and "initialJsonPrompt".
 Do not include any other text, explanations, or markdown formatting outside this JSON object.
 The entire response MUST be a single, valid JSON object.
 Ensure any double quotes within the string values (especially 'initialJsonPrompt') are properly escaped (e.g., "a \\"quoted\\" phrase").
@@ -189,7 +218,7 @@ Ensure any double quotes within the string values (especially 'initialJsonPrompt
 
     const parts: Part[] = [];
     garmentImages.forEach((img, idx) => {
-      parts.push({text: `Input Garment Image ${idx + 1}:`}); 
+      parts.push({text: `Input ${itemNameCapitalized} Image ${idx + 1}:`}); 
       parts.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } })
     });
     if (backgroundRefImages && backgroundRefImages.length > 0) {
@@ -200,7 +229,7 @@ Ensure any double quotes within the string values (especially 'initialJsonPrompt
         parts.push({text: "Optional Model Reference Image(s):"});
         modelRefImages.forEach((img) => parts.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } }));
     }
-    parts.push({ text: `Analyze the images and generate the fashion analysis, QA checklist, and initial JSON prompt.` });
+    parts.push({ text: `Analyze the images and generate the ${itemName} analysis, QA checklist, and initial JSON prompt.` });
     
     try {
         const response: GenerateContentResponse = await ai.models.generateContent({
@@ -213,13 +242,22 @@ Ensure any double quotes within the string values (especially 'initialJsonPrompt
         const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
         if (jsonStr.match(fenceRegex)) jsonStr = jsonStr.match(fenceRegex)![2].trim();
         
-        const parsedData = JSON.parse(jsonStr) as FashionPromptData;
+        const parsedData = JSON.parse(jsonStr) as any;
         
-        if (!parsedData || typeof parsedData.garmentAnalysis !== 'string' || typeof parsedData.qaChecklist !== 'string' || typeof parsedData.initialJsonPrompt !== 'string') {
-            throw new Error("API returned an unexpected format for the fashion prompt analysis.");
+        // Handle dynamic field names based on photoshoot type
+        const analysisFieldName = `${itemName}Analysis`;
+        const itemAnalysis = parsedData[analysisFieldName] || parsedData.garmentAnalysis; // fallback for backward compatibility
+        
+        if (!parsedData || typeof itemAnalysis !== 'string' || typeof parsedData.qaChecklist !== 'string' || typeof parsedData.initialJsonPrompt !== 'string') {
+            throw new Error(`API returned an unexpected format for the ${itemName} prompt analysis.`);
         }
         
-        return parsedData;
+        // Return in the expected FashionPromptData format for backward compatibility
+        return {
+            garmentAnalysis: itemAnalysis,
+            qaChecklist: parsedData.qaChecklist,
+            initialJsonPrompt: parsedData.initialJsonPrompt
+        } as FashionPromptData;
 
     } catch (error) {
         console.error("Error calling Gemini API for fashion analysis:", error);
@@ -227,39 +265,46 @@ Ensure any double quotes within the string values (especially 'initialJsonPrompt
             if (error.message.includes("API_KEY_INVALID")) throw new Error("The API key is invalid.");
             if (error.message.includes("Quota")) throw new Error("API quota exceeded.");
             if (error.message.includes("blockedBy")) throw new Error("Generation blocked by safety policy.");
-            if (error.message.toLowerCase().includes("json")) throw new Error(`Failed to parse fashion analysis. The response might not be valid JSON.`);
-            throw new Error(`Failed to generate fashion analysis from Gemini API: ${error.message}`);
+            if (error.message.toLowerCase().includes("json")) throw new Error(`Failed to parse ${itemName} analysis. The response might not be valid JSON.`);
+            throw new Error(`Failed to generate ${itemName} analysis from Gemini API: ${error.message}`);
         }
-        throw new Error("An unknown error occurred during fashion analysis generation.");
+        throw new Error(`An unknown error occurred during ${itemName} analysis generation.`);
     }
 };
 
 export const performQaAndGenerateStudioPrompts = async (
     originalGarmentImages: ImageInput[],
     generatedFashionImage: ImageInput,
-    analysisData: FashionPromptData
+    analysisData: FashionPromptData,
+    photoshootType: PhotoshootType = 'garment'
 ): Promise<RefinedStudioPrompt[]> => {
-    const systemInstruction = `You are an AI fashion QA expert and prompt generator.
+    const itemName = photoshootType === 'garment' ? 'garment' : 'product';
+    const itemNameCapitalized = itemName.charAt(0).toUpperCase() + itemName.slice(1);
+    const contextType = photoshootType === 'garment' ? 'fashion' : 'product';
+    
+    const systemInstruction = `You are an AI ${contextType} QA expert and prompt generator.
 You will receive:
-1.  Original garment image(s) (1 or 2 images showing the garment(s) to be accurately represented).
-2.  A garment analysis (text describing the original garment(s) attributes, possibly influenced by original model/background refs).
-3.  A QA checklist (specific points to verify for the original garment(s)).
-4.  An initial JSON prompt (the prompt that was ideally used to create an image of the garment(s), possibly influenced by original model/background refs).
+1.  Original ${itemName} image(s) (1 or 2 images showing the ${itemName}(s) to be accurately represented).
+2.  A ${itemName} analysis (text describing the original ${itemName}(s) attributes, possibly influenced by original model/background refs).
+3.  A QA checklist (specific points to verify for the original ${itemName}(s)).
+4.  An initial JSON prompt (the prompt that was ideally used to create an image of the ${itemName}(s), possibly influenced by original model/background refs).
 5.  The 'generated image' (an image supposedly created based on the initial prompt, which needs QA).
 
 Your tasks are:
 A.  **Ultra-Strict QA:**
-    -   Compare the 'generated image' meticulously against the 'original garment image(s)', the 'garment analysis', and the 'QA checklist'.
-    -   Identify ALL discrepancies: color shifts, fabric weave differences, fit inaccuracies, incorrect seam types, pattern misplacements, errors in closure details, neckline shape, sleeve style, etc. If the analysis specified two garments, check both.
-    -   Note if material finish (matte/glossy/satin) is correct for the garment(s).
-    -   Assess if the 'generated image' generally adhered to the 'initial JSON prompt' in terms of pose, background, and style, but prioritize accuracy to the *original garment(s)* above all.
+    -   Compare the 'generated image' meticulously against the 'original ${itemName} image(s)', the '${itemName} analysis', and the 'QA checklist'.
+    -   Identify ALL discrepancies: ${photoshootType === 'garment' 
+        ? 'color shifts, fabric weave differences, fit inaccuracies, incorrect seam types, pattern misplacements, errors in closure details, neckline shape, sleeve style, etc. If the analysis specified two garments, check both.'
+        : 'color variations, material finish differences, feature inaccuracies, incorrect proportions, branding misplacements, errors in product details, functionality representation, etc. If the analysis specified two products, check both.'}
+    -   Note if material finish ${photoshootType === 'garment' ? '(matte/glossy/satin)' : '(matte/glossy/textured/smooth)'} is correct for the ${itemName}(s).
+    -   Assess if the 'generated image' generally adhered to the 'initial JSON prompt' in terms of ${photoshootType === 'garment' ? 'pose, background, and style' : 'composition, background, and presentation'}, but prioritize accuracy to the *original ${itemName}(s)* above all.
     -   Provide a brief summary of key QA findings if significant deviations are found (this summary is for your internal use to inform prompt generation, not for direct output in the JSON).
 
 B.  **Refine & Generate 4 Studio Prompts:**
-    -   Based on your QA AND primarily drawing from the accurate details in the 'original garment image(s)' and 'garment analysis', generate 4 NEW, highly detailed studio prompts.
+    -   Based on your QA AND primarily drawing from the accurate details in the 'original ${itemName} image(s)' and '${itemName} analysis', generate 4 NEW, highly detailed studio prompts.
     -   **IMPORTANT CONSISTENCY RULES FOR STUDIO PROMPTS:** For all 4 studio prompts below:
         1.  You **MUST** choose ONE consistent, clean studio background (e.g., "plain white seamless paper background," "soft grey cyclorama wall," "neutral textured backdrop"). This choice can be informed by the 'initial JSON prompt' if it specified a good studio setup.
-        2.  You **MUST** choose ONE consistent professional studio lighting setup (e.g., "bright and even studio lighting using softboxes," "dramatic single-source key light with subtle fill," "crisp fashion studio lighting").
+        2.  You **MUST** choose ONE consistent professional studio lighting setup (e.g., "bright and even studio lighting using softboxes," "dramatic single-source key light with subtle fill," "crisp ${contextType} studio lighting").
         3.  Use these exact same chosen background and lighting descriptions in EACH of the 4 studio prompts. Do not vary them.
     -   These prompts must aim to create images that *perfectly and accurately* represent the *original garment(s) or ensemble* as detailed in the 'garment analysis', in this consistent high-quality studio setting.
     -   The model description in these studio prompts should be consistent with the one described/implied in the 'garment analysis' (which might have been influenced by original model references).
