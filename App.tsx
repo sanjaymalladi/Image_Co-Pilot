@@ -191,16 +191,36 @@ const App: React.FC = () => {
 
   // Generate dynamic viral marketing prompts based on actual product analysis
   const generateMarketingPrompts = async (basePrompts: any[], analysisData: FashionPromptData) => {
+    if (!analysisData || !analysisData.garmentAnalysis) {
+      console.error('Invalid analysis data provided to generateMarketingPrompts');
+      return [];
+    }
+
     const productAnalysis = analysisData.garmentAnalysis; // This contains product analysis for product mode
 
     try {
       // Use AI to generate contextually relevant viral marketing prompts
       const marketingPrompts = await generateViralMarketingPrompts(productAnalysis, photoshootType);
-      return marketingPrompts;
+      
+      // Validate the result
+      if (!marketingPrompts || !Array.isArray(marketingPrompts)) {
+        throw new Error('Invalid marketing prompts returned from AI');
+      }
+
+      // Ensure each prompt has required fields
+      const validatedPrompts = marketingPrompts.filter(prompt => 
+        prompt && typeof prompt.title === 'string' && typeof prompt.prompt === 'string'
+      );
+
+      if (validatedPrompts.length === 0) {
+        throw new Error('No valid marketing prompts generated');
+      }
+
+      return validatedPrompts;
     } catch (error) {
       console.error('Failed to generate dynamic marketing prompts, falling back to static ones:', error);
 
-      // Fallback to basctAnanamic prompts if AI fails
+      // Fallback to static prompts if AI fails
       return [
         {
           title: "Marketing Viral Shot 1 - Dramatic Hero",
@@ -449,7 +469,7 @@ const App: React.FC = () => {
     if (refinedPrompts.length === 0) return;
     setIsLoading(true);
 
-    const promptsToGenerate = refinedPrompts.filter(p => packType === 'all' || p.title.toLowerCase().includes(packType));
+    const promptsToGenerate = refinedPrompts.filter(p => p && p.title && (packType === 'all' || p.title.toLowerCase().includes(packType)));
 
     setRefinedPrompts(prev => prev.map(p => promptsToGenerate.find(ptg => ptg.id === p.id) ? { ...p, isLoadingImage: true, error: undefined, imageUrl: undefined } : p));
 
@@ -511,18 +531,29 @@ const App: React.FC = () => {
 
       // Generate marketing prompts for product photoshoot type
       if (photoshootType === 'product' && (packType === 'marketing' || packType === 'all')) {
-        const marketingPrompts = await generateMarketingPrompts(finalPrompts, analysisData);
-        if (packType === 'marketing') {
-          finalPrompts = marketingPrompts;
-        } else {
-          finalPrompts = [...finalPrompts, ...marketingPrompts];
+        try {
+          const marketingPrompts = await generateMarketingPrompts(finalPrompts, analysisData);
+          console.log('Generated marketing prompts:', marketingPrompts);
+          
+          if (marketingPrompts && Array.isArray(marketingPrompts) && marketingPrompts.length > 0) {
+            if (packType === 'marketing') {
+              finalPrompts = marketingPrompts;
+            } else {
+              finalPrompts = [...finalPrompts, ...marketingPrompts];
+            }
+          } else {
+            console.warn('Marketing prompts generation returned empty or invalid result');
+          }
+        } catch (error) {
+          console.error('Error generating marketing prompts:', error);
+          setError('Failed to generate marketing prompts. Please try again.');
         }
       }
 
       progressService.updateStep('prompt-refinement', 'completed');
 
       const promptsToGenerate = finalPrompts
-        .filter(p => packType === 'all' || p.title.toLowerCase().includes(packType))
+        .filter(p => p && p.title && (packType === 'all' || p.title.toLowerCase().includes(packType)))
         .map(p => ({
           id: `${p.title.replace(/\s+/g, '-')}-${Date.now()}`,
           title: p.title,
