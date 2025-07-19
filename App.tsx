@@ -1,7 +1,7 @@
 // @ts-nocheck
 
 import React, { useState, useCallback, ChangeEvent, useEffect, DragEvent } from 'react';
-import { generateFashionAnalysisAndInitialJsonPrompt, performQaAndGenerateStudioPrompts, generateSingleImage, generateInitialQaImage, generateImagePack } from './services/geminiService';
+import { generateFashionAnalysisAndInitialJsonPrompt, performQaAndGenerateStudioPrompts, generateSingleImage, generateInitialQaImage, generateImagePack, generateViralMarketingPrompts } from './services/geminiService';
 import { generateImageViaReplicate } from './services/replicateService';
 import { fileToBase64WithType } from './utils/fileUtils';
 import { Button } from './components/Button';
@@ -53,7 +53,7 @@ const App: React.FC = () => {
   // Helper function to save images to history
   const saveToHistory = async (imageUrl: string, prompt: string, title: string, aspectRatio: string = '3:4') => {
     if (!user) return;
-    
+
     try {
       await historyService.saveToHistory({
         userId: user.id,
@@ -128,7 +128,7 @@ const App: React.FC = () => {
   const handleImageClick = (index: number) => {
     const validImages = refinedPrompts.filter(item => item.imageUrl);
     if (validImages.length === 0) return;
-    
+
     const actualIndex = refinedPrompts.findIndex(item => item.imageUrl && refinedPrompts.indexOf(item) >= index);
     setFullScreenImageIndex(actualIndex >= 0 ? actualIndex : 0);
     setShowFullScreenModal(true);
@@ -139,7 +139,7 @@ const App: React.FC = () => {
   };
 
   const handleFullScreenImageUpdate = (updatedImage: RefinedPromptItem) => {
-    setRefinedPrompts(prev => prev.map(item => 
+    setRefinedPrompts(prev => prev.map(item =>
       item.id === updatedImage.id ? updatedImage : item
     ));
   };
@@ -182,35 +182,44 @@ const App: React.FC = () => {
   const handlePhotoshootTypeChange = (type: PhotoshootType) => {
     resetAllState();
     setPhotoshootType(type);
-    
+
     // Provide visual feedback for mode change
     const labels = getPhotoshootLabels(type);
     // Could add a toast notification here in the future
     console.log(`Switched to ${labels.mainItemName} photoshoot mode`);
   }
 
-  // Generate viral marketing prompts for products
-  const generateMarketingPrompts = (basePrompts: any[], analysisData: FashionPromptData) => {
+  // Generate dynamic viral marketing prompts based on actual product analysis
+  const generateMarketingPrompts = async (basePrompts: any[], analysisData: FashionPromptData) => {
     const productAnalysis = analysisData.garmentAnalysis; // This contains product analysis for product mode
-    
-    return [
-      {
-        title: "Marketing Viral Shot 1 - Dramatic Angle",
-        prompt: `${productAnalysis} VIRAL MARKETING SHOT: Extreme dramatic low-angle shot of the product, dynamic perspective with bold shadows and striking composition. Creative lighting with colored gels (purple, blue, orange). Product positioned as hero object with cinematic depth of field. High contrast, Instagram-worthy aesthetic. Professional commercial photography style that screams "viral content". Sharp focus on product with artistic blur. Trending social media composition.`
-      },
-      {
-        title: "Marketing Viral Shot 2 - Lifestyle Explosion", 
-        prompt: `${productAnalysis} VIRAL MARKETING SHOT: Product in explosive lifestyle scene - dynamic action shot with movement, energy, and excitement. Vibrant colors, multiple props creating visual chaos in the best way. Think "unboxing experience meets lifestyle porn". Bright, saturated colors. Product as centerpiece of aspirational lifestyle moment. Shot that makes viewers stop scrolling. High-energy composition with perfect lighting.`
-      },
-      {
-        title: "Marketing Viral Shot 3 - Minimalist Power",
-        prompt: `${productAnalysis} VIRAL MARKETING SHOT: Ultra-minimalist composition with maximum impact. Product floating in negative space with perfect shadows. Clean, modern aesthetic with subtle color gradients. Geometric composition that's instantly recognizable. Apple-style product photography meets artistic vision. Perfect symmetry and balance. Shot designed for maximum shareability and brand recognition.`
-      },
-      {
-        title: "Marketing Viral Shot 4 - Creative Chaos",
-        prompt: `${productAnalysis} VIRAL MARKETING SHOT: Creative explosion - product surrounded by related elements in artistic arrangement. Think "organized chaos" with perfect color coordination. Multiple textures, patterns, and complementary objects creating visual feast. Shot from unique angle that's never been done before. Instagram-story-worthy with built-in wow factor. Professional styling meets creative madness.`
-      }
-    ];
+
+    try {
+      // Use AI to generate contextually relevant viral marketing prompts
+      const marketingPrompts = await generateViralMarketingPrompts(productAnalysis, photoshootType);
+      return marketingPrompts;
+    } catch (error) {
+      console.error('Failed to generate dynamic marketing prompts, falling back to static ones:', error);
+
+      // Fallback to basctAnanamic prompts if AI fails
+      return [
+        {
+          title: "Marketing Viral Shot 1 - Dramatic Hero",
+          prompt: `${productAnalysis} VIRAL MARKETING SHOT: Think like a real photographer - what angle would make this product look absolutely incredible? Create a dramatic hero shot that showcases the product's best features with cinematic lighting and bold composition. Make it Instagram-stopping.`
+        },
+        {
+          title: "Marketing Viral Shot 2 - Lifestyle Magic",
+          prompt: `${productAnalysis} VIRAL MARKETING SHOT: How would this product fit into someone's dream lifestyle? Create an aspirational scene that makes viewers think "I need this in my life". Show the product in its perfect natural habitat with energy and excitement.`
+        },
+        {
+          title: "Marketing Viral Shot 3 - Minimalist Impact",
+          prompt: `${productAnalysis} VIRAL MARKETING SHOT: Strip everything away except what matters. Create a clean, powerful composition that lets the product speak for itself. Think Apple-level minimalism with maximum visual impact.`
+        },
+        {
+          title: "Marketing Viral Shot 4 - Creative Surprise",
+          prompt: `${productAnalysis} VIRAL MARKETING SHOT: What's an angle or perspective no one has tried with this type of product? Create something unexpected that makes people stop and look twice. Break the rules in the best way possible.`
+        }
+      ];
+    }
   }
 
   const clearSubsequentFashionStates = () => {
@@ -320,12 +329,12 @@ const App: React.FC = () => {
       event.dataTransfer.clearData();
     }
   }, [isLoading, processFiles]);
-  
+
   const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
   };
-  
+
   const clearSelectedFilesForMode = (fileType: 'garment' | 'backgroundRef' | 'modelRef') => {
     if (fileType === 'garment') {
       setFashionGarmentFiles([]);
@@ -362,25 +371,25 @@ const App: React.FC = () => {
     }
     setIsLoading(false);
   };
-  
+
   const handleGeneratedFashionImageFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
-        const file = event.target.files[0];
-        if (file.size > MAX_FILE_SIZE_BYTES) {
-            setError(`Generated image "${file.name}" exceeds ${MAX_FILE_SIZE_MB}MB.`);
-            return;
-        }
-        if (!file.type.startsWith('image/')) {
-            setError(`"${file.name}" is not a valid image type.`);
-            return;
-        }
-        
-        setGeneratedFashionImageFile(file);
-        const reader = new FileReader();
-        reader.onloadend = () => setGeneratedFashionImagePreviewUrl(reader.result as string);
-        reader.readAsDataURL(file);
-        setRefinedPrompts([]); 
-        setError(null); 
+      const file = event.target.files[0];
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        setError(`Generated image "${file.name}" exceeds ${MAX_FILE_SIZE_MB}MB.`);
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        setError(`"${file.name}" is not a valid image type.`);
+        return;
+      }
+
+      setGeneratedFashionImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setGeneratedFashionImagePreviewUrl(reader.result as string);
+      reader.readAsDataURL(file);
+      setRefinedPrompts([]);
+      setError(null);
     }
   };
 
@@ -390,7 +399,7 @@ const App: React.FC = () => {
     setRefinedPrompts([]);
     setError(null);
   };
-  
+
   const handleQaAndRefinePrompts = async () => {
     if (!fashionPromptData || !generatedFashionImageFile || fashionGarmentFiles.length === 0) {
       const labels = getPhotoshootLabels(photoshootType);
@@ -402,7 +411,7 @@ const App: React.FC = () => {
     const steps = progressService.getStepsForMode('simple', 'all', 8);
     progressService.startProgress(steps);
     progressService.updateStep('manual-qa', 'completed'); // QA image already uploaded
-    
+
     setIsLoading(true);
     setError(null);
     setRefinedPrompts([]);
@@ -414,7 +423,7 @@ const App: React.FC = () => {
 
       const results = await performQaAndGenerateStudioPrompts(originalGarmentImageInputs, generatedFashionImageInput, fashionPromptData, photoshootType);
       progressService.updateStep('prompt-refinement', 'completed');
-      
+
       setRefinedPrompts(results.map(p => ({
         id: `${p.title.replace(/\s+/g, '-')}-${Date.now()}`,
         title: p.title,
@@ -441,9 +450,9 @@ const App: React.FC = () => {
     setIsLoading(true);
 
     const promptsToGenerate = refinedPrompts.filter(p => packType === 'all' || p.title.toLowerCase().includes(packType));
-    
+
     setRefinedPrompts(prev => prev.map(p => promptsToGenerate.find(ptg => ptg.id === p.id) ? { ...p, isLoadingImage: true, error: undefined, imageUrl: undefined } : p));
-    
+
     try {
       const generatedImages = await generateImagePack(promptsToGenerate);
 
@@ -455,232 +464,232 @@ const App: React.FC = () => {
         return p;
       }));
 
-    } catch(err: any) {
-       setError(err.message || "An unexpected error occurred during image pack generation.");
-       setRefinedPrompts(prev => prev.map(p => promptsToGenerate.find(ptg => ptg.id === p.id) ? { ...p, isLoadingImage: false, error: "Pack generation failed" } : p));
+    } catch (err: any) {
+      setError(err.message || "An unexpected error occurred during image pack generation.");
+      setRefinedPrompts(prev => prev.map(p => promptsToGenerate.find(ptg => ptg.id === p.id) ? { ...p, isLoadingImage: false, error: "Pack generation failed" } : p));
     }
-    
+
     setIsLoading(false);
   };
-  
+
   const handleSimpleModeGeneration = async (packType: 'studio' | 'lifestyle' | 'marketing' | 'all') => {
     if (fashionGarmentFiles.length === 0) {
-        const labels = getPhotoshootLabels(photoshootType);
-        setError(labels.errorUploadMessage);
-        return;
+      const labels = getPhotoshootLabels(photoshootType);
+      setError(labels.errorUploadMessage);
+      return;
     }
-    
+
     // Initialize progress tracking
     const steps = progressService.getStepsForMode('simple', packType);
     progressService.startProgress(steps);
-    
+
     setIsLoading(true);
     setError(null);
     setRefinedPrompts([]);
 
     try {
-        // Step 1: Analyze Garment
-        progressService.updateStep('analyze', 'active');
-        const garmentImageInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
-        const backgroundRefImageInputs = await Promise.all(fashionBackgroundRefFiles.map(fileToBase64WithType));
-        const modelRefImageInputs = await Promise.all(fashionModelRefFiles.map(fileToBase64WithType));
-        
-        const analysisData = await generateFashionAnalysisAndInitialJsonPrompt(garmentImageInputs, backgroundRefImageInputs.length > 0 ? backgroundRefImageInputs : undefined, modelRefImageInputs.length > 0 ? modelRefImageInputs : undefined, photoshootType);
-        progressService.updateStep('analyze', 'completed');
+      // Step 1: Analyze Garment
+      progressService.updateStep('analyze', 'active');
+      const garmentImageInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
+      const backgroundRefImageInputs = await Promise.all(fashionBackgroundRefFiles.map(fileToBase64WithType));
+      const modelRefImageInputs = await Promise.all(fashionModelRefFiles.map(fileToBase64WithType));
 
-        // Prepare data URLs once to reuse across calls
-        const garmentDataUrls = garmentImageInputs.map(img => `data:${img.mimeType};base64,${img.base64}`);
+      const analysisData = await generateFashionAnalysisAndInitialJsonPrompt(garmentImageInputs, backgroundRefImageInputs.length > 0 ? backgroundRefImageInputs : undefined, modelRefImageInputs.length > 0 ? modelRefImageInputs : undefined, photoshootType);
+      progressService.updateStep('analyze', 'completed');
 
-        // Step 2: Perform QA with a REAL generated image that uses the garment references
-        progressService.updateStep('qa-generation', 'active');
-        const qaImageInput = await generateInitialQaImage(analysisData.initialJsonPrompt, garmentDataUrls);
-        progressService.updateStep('qa-generation', 'completed');
+      // Prepare data URLs once to reuse across calls
+      const garmentDataUrls = garmentImageInputs.map(img => `data:${img.mimeType};base64,${img.base64}`);
 
-        // Step 3: Create optimized prompts
-        progressService.updateStep('prompt-refinement', 'active');
-        let finalPrompts = await performQaAndGenerateStudioPrompts(garmentImageInputs, qaImageInput, analysisData, photoshootType);
-        
-        // Generate marketing prompts for product photoshoot type
-        if (photoshootType === 'product' && (packType === 'marketing' || packType === 'all')) {
-          const marketingPrompts = generateMarketingPrompts(finalPrompts, analysisData);
-          if (packType === 'marketing') {
-            finalPrompts = marketingPrompts;
-          } else {
-            finalPrompts = [...finalPrompts, ...marketingPrompts];
-          }
+      // Step 2: Perform QA with a REAL generated image that uses the garment references
+      progressService.updateStep('qa-generation', 'active');
+      const qaImageInput = await generateInitialQaImage(analysisData.initialJsonPrompt, garmentDataUrls);
+      progressService.updateStep('qa-generation', 'completed');
+
+      // Step 3: Create optimized prompts
+      progressService.updateStep('prompt-refinement', 'active');
+      let finalPrompts = await performQaAndGenerateStudioPrompts(garmentImageInputs, qaImageInput, analysisData, photoshootType);
+
+      // Generate marketing prompts for product photoshoot type
+      if (photoshootType === 'product' && (packType === 'marketing' || packType === 'all')) {
+        const marketingPrompts = await generateMarketingPrompts(finalPrompts, analysisData);
+        if (packType === 'marketing') {
+          finalPrompts = marketingPrompts;
+        } else {
+          finalPrompts = [...finalPrompts, ...marketingPrompts];
         }
-        
-        progressService.updateStep('prompt-refinement', 'completed');
-        
-        const promptsToGenerate = finalPrompts
-            .filter(p => packType === 'all' || p.title.toLowerCase().includes(packType))
-            .map(p => ({
-                id: `${p.title.replace(/\s+/g, '-')}-${Date.now()}`,
-                title: p.title,
-                prompt: p.prompt,
-                isCopied: false,
-                isLoadingImage: true,
-                aspectRatio: '3:4',
-            }));
-        
-        setRefinedPrompts(promptsToGenerate);
+      }
 
-        // --- Step 4: Generate Images via Replicate multi-image workflow ---
+      progressService.updateStep('prompt-refinement', 'completed');
 
-        // garmentDataUrls were already prepared above
+      const promptsToGenerate = finalPrompts
+        .filter(p => packType === 'all' || p.title.toLowerCase().includes(packType))
+        .map(p => ({
+          id: `${p.title.replace(/\s+/g, '-')}-${Date.now()}`,
+          title: p.title,
+          prompt: p.prompt,
+          isCopied: false,
+          isLoadingImage: true,
+          aspectRatio: '3:4',
+        }));
 
-        // Identify the front-view prompt (fallback to first)
-        const frontIndex = promptsToGenerate.findIndex(p => p.title.toLowerCase().includes('front'));
-        const frontPromptId = frontIndex !== -1 ? promptsToGenerate[frontIndex].id : promptsToGenerate[0].id;
-        const frontPromptItem = promptsToGenerate.find(p => p.id === frontPromptId)!;
+      setRefinedPrompts(promptsToGenerate);
 
-        // Generate the seed/front image
-        let seedImageUrl: string;
-        
-        // Update progress for front view generation
+      // --- Step 4: Generate Images via Replicate multi-image workflow ---
+
+      // garmentDataUrls were already prepared above
+
+      // Identify the front-view prompt (fallback to first)
+      const frontIndex = promptsToGenerate.findIndex(p => p.title.toLowerCase().includes('front'));
+      const frontPromptId = frontIndex !== -1 ? promptsToGenerate[frontIndex].id : promptsToGenerate[0].id;
+      const frontPromptItem = promptsToGenerate.find(p => p.id === frontPromptId)!;
+
+      // Generate the seed/front image
+      let seedImageUrl: string;
+
+      // Update progress for front view generation
+      if (packType === 'studio' || packType === 'all') {
+        progressService.updateStep('studio-front', 'active');
+      }
+
+      try {
+        seedImageUrl = await generateImageViaReplicate({
+          prompt: frontPromptItem.prompt,
+          aspect_ratio: frontPromptItem.aspectRatio,
+          input_images: garmentDataUrls,
+        });
+
+        setFirstImageUrl(seedImageUrl);
+        setRefinedPrompts(prev => prev.map(p => p.id === frontPromptId ? { ...p, isLoadingImage: false, imageUrl: seedImageUrl } : p));
+        // Save to history
+        await saveToHistory(seedImageUrl, frontPromptItem.prompt, frontPromptItem.title, frontPromptItem.aspectRatio);
+
         if (packType === 'studio' || packType === 'all') {
-          progressService.updateStep('studio-front', 'active');
+          progressService.updateStep('studio-front', 'completed');
         }
-        
-        try {
-          seedImageUrl = await generateImageViaReplicate({
-            prompt: frontPromptItem.prompt,
-            aspect_ratio: frontPromptItem.aspectRatio,
-            input_images: garmentDataUrls,
-          });
-          
-          setFirstImageUrl(seedImageUrl);
-          setRefinedPrompts(prev => prev.map(p => p.id === frontPromptId ? { ...p, isLoadingImage: false, imageUrl: seedImageUrl } : p));
-          // Save to history
-          await saveToHistory(seedImageUrl, frontPromptItem.prompt, frontPromptItem.title, frontPromptItem.aspectRatio);
-          
-          if (packType === 'studio' || packType === 'all') {
-            progressService.updateStep('studio-front', 'completed');
-          }
-        } catch (err: any) {
-          setRefinedPrompts(prev => prev.map(p => p.id === frontPromptId ? { ...p, isLoadingImage: false, error: err.message || 'Failed' } : p));
-          if (packType === 'studio' || packType === 'all') {
-            progressService.errorProgress('studio-front', err.message || 'Failed to generate front view');
-          }
-          throw err;
+      } catch (err: any) {
+        setRefinedPrompts(prev => prev.map(p => p.id === frontPromptId ? { ...p, isLoadingImage: false, error: err.message || 'Failed' } : p));
+        if (packType === 'studio' || packType === 'all') {
+          progressService.errorProgress('studio-front', err.message || 'Failed to generate front view');
         }
+        throw err;
+      }
 
-        // Generate remaining images sequentially with delays to avoid rate limits
-        const remaining: RefinedPromptItem[] = promptsToGenerate.filter(p => p.id !== frontPromptId);
-        const remainingResults: {id: string; imageUrl?: string; error?: string}[] = [];
-        
-        // Update progress for additional studio images or lifestyle generation
-        if (remaining.length > 0) {
-          if (packType === 'studio' || packType === 'all') {
-            const hasStudioRemaining = remaining.some(p => p.title.toLowerCase().includes('studio'));
-            if (hasStudioRemaining) {
-              progressService.updateStep('studio-additional', 'active');
-            }
-          }
-          if (packType === 'lifestyle' || packType === 'all') {
-            const hasLifestyleRemaining = remaining.some(p => p.title.toLowerCase().includes('lifestyle'));
-            if (hasLifestyleRemaining) {
-              progressService.updateStep('lifestyle-generation', 'active');
-            }
-          }
-          if (packType === 'marketing' || packType === 'all') {
-            const hasMarketingRemaining = remaining.some(p => p.title.toLowerCase().includes('marketing'));
-            if (hasMarketingRemaining) {
-              progressService.updateStep('marketing-generation', 'active');
-            }
-          }
-        }
-        
-        for (let i = 0; i < remaining.length; i++) {
-          const p = remaining[i];
-          try {
-            const replicateUrl = await generateImageViaReplicate({
-              prompt: p.prompt,
-              aspect_ratio: p.aspectRatio,
-              input_images: [...garmentDataUrls, seedImageUrl],
-            });
-            // Save to history
-            await saveToHistory(replicateUrl, p.prompt, p.title, p.aspectRatio);
-            remainingResults.push({ id: p.id, imageUrl: replicateUrl });
-          } catch (err: any) {
-            remainingResults.push({ id: p.id, error: err.message || 'Failed' });
-          }
-          
-          // Add a 1-second delay between image generation requests
-          if (i < remaining.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
+      // Generate remaining images sequentially with delays to avoid rate limits
+      const remaining: RefinedPromptItem[] = promptsToGenerate.filter(p => p.id !== frontPromptId);
+      const remainingResults: { id: string; imageUrl?: string; error?: string }[] = [];
 
-        // Complete progress steps
+      // Update progress for additional studio images or lifestyle generation
+      if (remaining.length > 0) {
         if (packType === 'studio' || packType === 'all') {
           const hasStudioRemaining = remaining.some(p => p.title.toLowerCase().includes('studio'));
           if (hasStudioRemaining) {
-            progressService.updateStep('studio-additional', 'completed');
+            progressService.updateStep('studio-additional', 'active');
           }
         }
         if (packType === 'lifestyle' || packType === 'all') {
           const hasLifestyleRemaining = remaining.some(p => p.title.toLowerCase().includes('lifestyle'));
           if (hasLifestyleRemaining) {
-            progressService.updateStep('lifestyle-generation', 'completed');
+            progressService.updateStep('lifestyle-generation', 'active');
           }
         }
         if (packType === 'marketing' || packType === 'all') {
           const hasMarketingRemaining = remaining.some(p => p.title.toLowerCase().includes('marketing'));
           if (hasMarketingRemaining) {
-            progressService.updateStep('marketing-generation', 'completed');
+            progressService.updateStep('marketing-generation', 'active');
           }
         }
+      }
 
-        setRefinedPrompts(prev => prev.map(p => {
-          const res = remainingResults.find(r => r.id === p.id);
-          if (!res) return p;
-          return { ...p, isLoadingImage: false, imageUrl: (res as any).imageUrl, error: (res as any).error };
-        }));
+      for (let i = 0; i < remaining.length; i++) {
+        const p = remaining[i];
+        try {
+          const replicateUrl = await generateImageViaReplicate({
+            prompt: p.prompt,
+            aspect_ratio: p.aspectRatio,
+            input_images: [...garmentDataUrls, seedImageUrl],
+          });
+          // Save to history
+          await saveToHistory(replicateUrl, p.prompt, p.title, p.aspectRatio);
+          remainingResults.push({ id: p.id, imageUrl: replicateUrl });
+        } catch (err: any) {
+          remainingResults.push({ id: p.id, error: err.message || 'Failed' });
+        }
+
+        // Add a 1-second delay between image generation requests
+        if (i < remaining.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      // Complete progress steps
+      if (packType === 'studio' || packType === 'all') {
+        const hasStudioRemaining = remaining.some(p => p.title.toLowerCase().includes('studio'));
+        if (hasStudioRemaining) {
+          progressService.updateStep('studio-additional', 'completed');
+        }
+      }
+      if (packType === 'lifestyle' || packType === 'all') {
+        const hasLifestyleRemaining = remaining.some(p => p.title.toLowerCase().includes('lifestyle'));
+        if (hasLifestyleRemaining) {
+          progressService.updateStep('lifestyle-generation', 'completed');
+        }
+      }
+      if (packType === 'marketing' || packType === 'all') {
+        const hasMarketingRemaining = remaining.some(p => p.title.toLowerCase().includes('marketing'));
+        if (hasMarketingRemaining) {
+          progressService.updateStep('marketing-generation', 'completed');
+        }
+      }
+
+      setRefinedPrompts(prev => prev.map(p => {
+        const res = remainingResults.find(r => r.id === p.id);
+        if (!res) return p;
+        return { ...p, isLoadingImage: false, imageUrl: (res as any).imageUrl, error: (res as any).error };
+      }));
 
     } catch (err: any) {
-        const labels = getPhotoshootLabels(photoshootType);
-        setError(err.message || `Failed to generate ${labels.mainItemName} image pack.`);
-        progressService.errorProgress(progressService.getCurrentProgress()?.currentStepId || 'unknown', err.message || 'Generation failed');
+      const labels = getPhotoshootLabels(photoshootType);
+      setError(err.message || `Failed to generate ${labels.mainItemName} image pack.`);
+      progressService.errorProgress(progressService.getCurrentProgress()?.currentStepId || 'unknown', err.message || 'Generation failed');
     } finally {
-        // Finalize progress
-        progressService.updateStep('finalize', 'active');
-        await new Promise(resolve => setTimeout(resolve, 500)); // Brief pause for finalization
-        progressService.completeProgress();
-        setIsLoading(false);
+      // Finalize progress
+      progressService.updateStep('finalize', 'active');
+      await new Promise(resolve => setTimeout(resolve, 500)); // Brief pause for finalization
+      progressService.completeProgress();
+      setIsLoading(false);
     }
   };
 
   const handleAutoQa = async () => {
     if (!fashionPromptData) {
-        setError("Initial analysis data is missing.");
-        return;
+      setError("Initial analysis data is missing.");
+      return;
     }
     setIsLoading(true);
     setError(null);
     setRefinedPrompts([]);
 
     try {
-        // Prepare original garment inputs
-        const originalGarmentImageInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
-        const garmentDataUrls = originalGarmentImageInputs.map(img => `data:${img.mimeType};base64,${img.base64}`);
+      // Prepare original garment inputs
+      const originalGarmentImageInputs = await Promise.all(fashionGarmentFiles.map(fileToBase64WithType));
+      const garmentDataUrls = originalGarmentImageInputs.map(img => `data:${img.mimeType};base64,${img.base64}`);
 
-        // Generate a QA image using the garment references
-        const qaImageInput = await generateInitialQaImage(fashionPromptData.initialJsonPrompt, garmentDataUrls);
+      // Generate a QA image using the garment references
+      const qaImageInput = await generateInitialQaImage(fashionPromptData.initialJsonPrompt, garmentDataUrls);
 
-        const results = await performQaAndGenerateStudioPrompts(originalGarmentImageInputs, qaImageInput, fashionPromptData, photoshootType);
-        
-        setRefinedPrompts(results.map(p => ({
-            id: `${p.title.replace(/\s+/g, '-')}-${Date.now()}`,
-            title: p.title,
-            prompt: p.prompt,
-            isCopied: false,
-            isLoadingImage: false,
-            aspectRatio: '3:4'
-        })));
+      const results = await performQaAndGenerateStudioPrompts(originalGarmentImageInputs, qaImageInput, fashionPromptData, photoshootType);
+
+      setRefinedPrompts(results.map(p => ({
+        id: `${p.title.replace(/\s+/g, '-')}-${Date.now()}`,
+        title: p.title,
+        prompt: p.prompt,
+        isCopied: false,
+        isLoadingImage: false,
+        aspectRatio: '3:4'
+      })));
     } catch (err: any) {
-        setError(err.message || "Failed to perform automated QA.");
-        setRefinedPrompts([]);
+      setError(err.message || "Failed to perform automated QA.");
+      setRefinedPrompts([]);
     }
     setIsLoading(false);
   };
@@ -694,7 +703,7 @@ const App: React.FC = () => {
         return;
       }
 
-    const promptItem = refinedPrompts.find(p => p.id === itemId);
+      const promptItem = refinedPrompts.find(p => p.id === itemId);
       if (!promptItem) {
         setError("Prompt not found.");
         return;
@@ -723,7 +732,7 @@ const App: React.FC = () => {
         setRefinedPrompts(prev => prev.map(p => p.id === itemId ? { ...p, isLoadingImage: false, imageUrl } : p));
         // Save to history
         await saveToHistory(imageUrl, promptItem.prompt, promptItem.title, promptItem.aspectRatio);
-    } catch (err: any) {
+      } catch (err: any) {
         setRefinedPrompts(prev => prev.map(p => p.id === itemId ? { ...p, isLoadingImage: false, error: err.message || 'Failed to generate image' } : p));
       }
 
@@ -791,7 +800,7 @@ const App: React.FC = () => {
       });
     }
   };
-  
+
   const copyRefinedPrompt = (itemId: string) => {
     const promptItem = refinedPrompts.find(p => p.id === itemId);
     if (promptItem?.prompt) {
@@ -811,7 +820,7 @@ const App: React.FC = () => {
 
   const handleDownloadAllImages = async () => {
     const validImages = refinedPrompts.filter(item => item.imageUrl);
-    
+
     // For bulk download, we'll use the basic download without upscale options
     for (const item of validImages) {
       if (item.imageUrl) {
@@ -826,7 +835,7 @@ const App: React.FC = () => {
           link.click();
           document.body.removeChild(link);
           window.URL.revokeObjectURL(url);
-          
+
           // Small delay between downloads
           await new Promise(resolve => setTimeout(resolve, 500));
         } catch (error) {
@@ -850,7 +859,7 @@ const App: React.FC = () => {
     }
 
     const selectedCount = [selectedPacks.studio, selectedPacks.lifestyle, selectedPacks.marketing].filter(Boolean).length;
-    
+
     if (selectedCount > 1) {
       await handleSimpleModeGeneration('all');
     } else if (selectedPacks.studio) {
@@ -878,7 +887,7 @@ const App: React.FC = () => {
 
   const handleImageSelectionConfirm = () => {
     if (selectedImageIds.length === 0) return;
-    
+
     setEditMode(selectedImageIds.length === 1 ? 'single' : 'multiple');
     setShowImageSelector(false);
     setIsEditMode(true);
@@ -935,94 +944,94 @@ const App: React.FC = () => {
       </div>
     );
   };
-  
+
   const renderImageResultGrid = (items: RefinedPromptItem[]) => {
-      const displayItems = items.length > 0 ? items : Array(4).fill(null).map((_, i): RefinedPromptItem => ({ id: `placeholder-${i}`, title: 'Awaiting Generation...', prompt: '', isCopied: false, isLoadingImage: false, aspectRatio: '3:4' }));
-      
-      return (
-        <div className="space-y-4">
-          {items.length > 0 && (
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={handleEditModeToggle}
-                  variant="secondary"
-                  size="sm"
-                  disabled={!items.some(item => item.imageUrl)}
-                >
-                  <SparklesIcon className="w-4 h-4 mr-1" />
-                  Edit Images
-                </Button>
-              </div>
+    const displayItems = items.length > 0 ? items : Array(4).fill(null).map((_, i): RefinedPromptItem => ({ id: `placeholder-${i}`, title: 'Awaiting Generation...', prompt: '', isCopied: false, isLoadingImage: false, aspectRatio: '3:4' }));
+
+    return (
+      <div className="space-y-4">
+        {items.length > 0 && (
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
               <Button
-                onClick={handleDownloadAllImages}
+                onClick={handleEditModeToggle}
                 variant="secondary"
                 size="sm"
+                disabled={!items.some(item => item.imageUrl)}
               >
-                <ArrowDownTrayIcon className="w-4 h-4 mr-1" />
-                Download All Images
+                <SparklesIcon className="w-4 h-4 mr-1" />
+                Edit Images
               </Button>
             </div>
-          )}
-        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4`}>
-            {displayItems.map(item => (
-                <div key={item.id} className="bg-white p-3 rounded-lg shadow-md border border-slate-100 flex flex-col justify-between">
-                    <h4 className="font-semibold text-slate-700 text-sm mb-2 truncate">{item.title}</h4>
-                    <div className="aspect-[3/4] bg-slate-100 rounded flex items-center justify-center mb-2 overflow-hidden border border-slate-200">
-                        {item.isLoadingImage && <Spinner className="w-8 h-8 text-sky-500" />}
-                          {item.imageUrl && !item.isLoadingImage && (
-                            <img 
-                              src={item.imageUrl} 
-                              onLoad={(e) => e.currentTarget.classList.remove('blur-lg')} 
-                              alt={item.title} 
-                              className="w-full h-full object-cover rounded blur-lg transition-all duration-700 cursor-pointer hover:scale-105 transition-transform" 
-                              onClick={() => handleImageClick(displayItems.indexOf(item))}
-                            />
-                          )}
-                          {!item.imageUrl && !item.isLoadingImage && !item.error && <PlaceholderIcon className="w-12 h-12 text-slate-300" />}
-                        {item.error && !item.isLoadingImage && (
-                            <div className="p-2 text-center">
-                                <XCircleIcon className="w-8 h-8 text-red-400 mx-auto mb-1" />
-                                <p className="text-xs text-red-600">{item.error}</p>
-                            </div>
-                        )}
-                    </div>
-                      <div className="flex flex-col gap-2">
-                        {item.imageUrl && !item.isLoadingImage && (
-                          <Button 
-                            onClick={() => handleDownloadImage(
-                              item.imageUrl!, 
-                              `${item.title.toLowerCase().replace(/\s+/g, '-')}.png`,
-                              `Download ${item.title}`
-                            )}
-                            variant="secondary" 
-                            size="sm"
-                            className="w-full"
-                            aria-label={`Download ${item.title}`}
-                          >
-                            <ArrowDownTrayIcon className="w-4 h-4 mr-1" />
-                            Download
-                          </Button>
-                        )}
-                        {photoshootType === 'garment' && (
-                     <Button 
-                        onClick={() => copyRefinedPrompt(item.id)}
-                        variant="secondary" 
-                        size="sm"
-                        className="w-full"
-                        disabled={!item.prompt}
-                        aria-label={`Copy prompt for ${item.title} to clipboard`}
-                    >
-                      {item.isCopied ? <CheckIcon className="w-4 h-4 text-green-500" /> : <ClipboardIcon className="w-4 h-4" />}
-                      {item.isCopied ? 'Copied!' : 'Copy Prompt'}
-                    </Button>
-                        )}
-                      </div>
-                </div>
-            ))}
+            <Button
+              onClick={handleDownloadAllImages}
+              variant="secondary"
+              size="sm"
+            >
+              <ArrowDownTrayIcon className="w-4 h-4 mr-1" />
+              Download All Images
+            </Button>
           </div>
+        )}
+        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4`}>
+          {displayItems.map(item => (
+            <div key={item.id} className="bg-white p-3 rounded-lg shadow-md border border-slate-100 flex flex-col justify-between">
+              <h4 className="font-semibold text-slate-700 text-sm mb-2 truncate">{item.title}</h4>
+              <div className="aspect-[3/4] bg-slate-100 rounded flex items-center justify-center mb-2 overflow-hidden border border-slate-200">
+                {item.isLoadingImage && <Spinner className="w-8 h-8 text-sky-500" />}
+                {item.imageUrl && !item.isLoadingImage && (
+                  <img
+                    src={item.imageUrl}
+                    onLoad={(e) => e.currentTarget.classList.remove('blur-lg')}
+                    alt={item.title}
+                    className="w-full h-full object-cover rounded blur-lg transition-all duration-700 cursor-pointer hover:scale-105 transition-transform"
+                    onClick={() => handleImageClick(displayItems.indexOf(item))}
+                  />
+                )}
+                {!item.imageUrl && !item.isLoadingImage && !item.error && <PlaceholderIcon className="w-12 h-12 text-slate-300" />}
+                {item.error && !item.isLoadingImage && (
+                  <div className="p-2 text-center">
+                    <XCircleIcon className="w-8 h-8 text-red-400 mx-auto mb-1" />
+                    <p className="text-xs text-red-600">{item.error}</p>
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                {item.imageUrl && !item.isLoadingImage && (
+                  <Button
+                    onClick={() => handleDownloadImage(
+                      item.imageUrl!,
+                      `${item.title.toLowerCase().replace(/\s+/g, '-')}.png`,
+                      `Download ${item.title}`
+                    )}
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                    aria-label={`Download ${item.title}`}
+                  >
+                    <ArrowDownTrayIcon className="w-4 h-4 mr-1" />
+                    Download
+                  </Button>
+                )}
+                {photoshootType === 'garment' && (
+                  <Button
+                    onClick={() => copyRefinedPrompt(item.id)}
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                    disabled={!item.prompt}
+                    aria-label={`Copy prompt for ${item.title} to clipboard`}
+                  >
+                    {item.isCopied ? <CheckIcon className="w-4 h-4 text-green-500" /> : <ClipboardIcon className="w-4 h-4" />}
+                    {item.isCopied ? 'Copied!' : 'Copy Prompt'}
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
-      );
+      </div>
+    );
   }
 
   const renderUploaders = () => {
@@ -1060,9 +1069,9 @@ const App: React.FC = () => {
           </SignedOut>
           <SignedIn>
             <div className="flex items-center gap-3">
-              <Button 
-                variant="secondary" 
-                size="sm" 
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => setAppMode(appMode === 'history' ? 'generation' : 'history')}
                 className="flex items-center gap-2"
               >
@@ -1072,7 +1081,7 @@ const App: React.FC = () => {
               <UserButton afterSignOutUrl="/" />
             </div>
           </SignedIn>
-          </div>
+        </div>
       </nav>
 
       <div className="w-full max-w-6xl space-y-8">
@@ -1117,11 +1126,11 @@ const App: React.FC = () => {
                       onChange={() => handlePackSelection('marketing')}
                       className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500"
                     />
-                    <span className="text-slate-700 font-semibold text-purple-600">🚀 Marketing Pack (4 Viral Shots)</span>
+                    <span className="text-slate-700 font-semibold text-purple-600">Marketing Pack</span>
                   </label>
                 )}
               </div>
-              
+
               {/* Pack descriptions */}
               {(selectedPacks.studio || selectedPacks.lifestyle || selectedPacks.marketing) && (
                 <div className="text-sm text-slate-600 space-y-1">
@@ -1136,7 +1145,7 @@ const App: React.FC = () => {
                   )}
                 </div>
               )}
-              
+
               <Button
                 onClick={handleGenerateSelectedPacks}
                 disabled={isLoading || (!selectedPacks.studio && !selectedPacks.lifestyle && !selectedPacks.marketing)}
@@ -1147,18 +1156,18 @@ const App: React.FC = () => {
                     <Spinner />
                     {generationProgress && (
                       <span className="ml-2">
-                        {generationProgress.steps.find(s => s.status === 'active')?.label || 'Generating'} 
+                        {generationProgress.steps.find(s => s.status === 'active')?.label || 'Generating'}
                         {generationProgress.elapsedTime > 0 && (
                           <span className="text-sm opacity-75 ml-1">
                             (~{progressService.formatDuration(
                               Math.max(0, progressService.getEstimatedTime(
                                 'simple',
-                                (selectedPacks.studio && selectedPacks.lifestyle) || 
-                                (selectedPacks.studio && selectedPacks.marketing) || 
-                                (selectedPacks.lifestyle && selectedPacks.marketing) ||
-                                (selectedPacks.studio && selectedPacks.lifestyle && selectedPacks.marketing) ? 'all' : 
-                                selectedPacks.studio ? 'studio' : 
-                                selectedPacks.lifestyle ? 'lifestyle' : 'marketing'
+                                (selectedPacks.studio && selectedPacks.lifestyle) ||
+                                  (selectedPacks.studio && selectedPacks.marketing) ||
+                                  (selectedPacks.lifestyle && selectedPacks.marketing) ||
+                                  (selectedPacks.studio && selectedPacks.lifestyle && selectedPacks.marketing) ? 'all' :
+                                  selectedPacks.studio ? 'studio' :
+                                    selectedPacks.lifestyle ? 'lifestyle' : 'marketing'
                               ) - generationProgress.elapsedTime)
                             )} left)
                           </span>
@@ -1175,20 +1184,20 @@ const App: React.FC = () => {
                         (~{progressService.formatDuration(
                           progressService.getEstimatedTime(
                             'simple',
-                            (selectedPacks.studio && selectedPacks.lifestyle) || 
-                            (selectedPacks.studio && selectedPacks.marketing) || 
-                            (selectedPacks.lifestyle && selectedPacks.marketing) ||
-                            (selectedPacks.studio && selectedPacks.lifestyle && selectedPacks.marketing) ? 'all' : 
-                            selectedPacks.studio ? 'studio' : 
-                            selectedPacks.lifestyle ? 'lifestyle' : 'marketing'
+                            (selectedPacks.studio && selectedPacks.lifestyle) ||
+                              (selectedPacks.studio && selectedPacks.marketing) ||
+                              (selectedPacks.lifestyle && selectedPacks.marketing) ||
+                              (selectedPacks.studio && selectedPacks.lifestyle && selectedPacks.marketing) ? 'all' :
+                              selectedPacks.studio ? 'studio' :
+                                selectedPacks.lifestyle ? 'lifestyle' : 'marketing'
                           )
                         )})
                       </span>
                     )}
                   </>
                 )}
-                  </Button>
-              </div>
+              </Button>
+            </div>
           </div>
         )} {/* end Simple-mode pack */}
 

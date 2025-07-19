@@ -105,6 +105,73 @@ export const generateImagePack = async (promptsToGenerate: RefinedPromptItem[]):
   return Promise.all(generationPromises);
 };
 
+// Generate dynamic viral marketing prompts based on product analysis
+export const generateViralMarketingPrompts = async (
+  productAnalysis: string,
+  photoshootType: PhotoshootType
+): Promise<RefinedStudioPrompt[]> => {
+  const systemInstruction = `You are a world-class creative director and viral marketing expert. Your job is to analyze a product and create 4 VIRAL-WORTHY marketing shot concepts that would actually work in the real world.
+
+Think like a real photographer/creative director would:
+- What makes this specific product special?
+- What angles/scenarios would make people stop scrolling?
+- How would a top agency shoot this for maximum viral potential?
+- What's the product's "hero moment"?
+
+You will receive a detailed product analysis. Based on this analysis, create 4 distinct viral marketing shot concepts that are:
+1. CONTEXTUALLY RELEVANT to the actual product
+2. DESIGNED TO GO VIRAL on social media
+3. PHOTOGRAPHICALLY ACHIEVABLE in real world
+4. UNIQUE to this specific product type
+
+For each shot, think about:
+- What would make someone screenshot this?
+- What angle hasn't been done before?
+- How does this product fit into aspirational lifestyle?
+- What's the "wow factor" for this specific item?
+
+Return exactly 4 marketing shot concepts as a JSON array with "title" and "prompt" fields.
+Each prompt should be detailed enough for an AI image generator but creative enough to go viral.
+
+IMPORTANT: Make the shots SPECIFIC to the product, not generic templates. A phone case needs different viral shots than a coffee mug or headphones.`;
+
+  const parts: Part[] = [
+    { text: `Product Analysis: ${productAnalysis}` },
+    { text: `Generate 4 viral marketing shot concepts that would make this specific product go viral on social media. Think like a real creative director - what would actually work for THIS product?` }
+  ];
+
+  try {
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: { parts: parts },
+      config: { systemInstruction, responseMimeType: "application/json" }
+    });
+
+    let jsonStr = (response.text ?? '').trim();
+    const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
+    if (jsonStr.match(fenceRegex)) jsonStr = jsonStr.match(fenceRegex)![2].trim();
+
+    const parsedPrompts = JSON.parse(jsonStr) as RefinedStudioPrompt[];
+    
+    if (!Array.isArray(parsedPrompts) || parsedPrompts.length !== 4) {
+      throw new Error("Expected exactly 4 marketing prompts");
+    }
+
+    // Validate each prompt has title and prompt fields
+    parsedPrompts.forEach((prompt, index) => {
+      if (!prompt.title || !prompt.prompt) {
+        throw new Error(`Marketing prompt ${index + 1} missing title or prompt field`);
+      }
+    });
+
+    return parsedPrompts;
+
+  } catch (error) {
+    console.error("Error generating viral marketing prompts:", error);
+    throw new Error(`Failed to generate viral marketing prompts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
+
 export const generateFashionAnalysisAndInitialJsonPrompt = async (
     garmentImages: ImageInput[],
     backgroundRefImages?: ImageInput[],
