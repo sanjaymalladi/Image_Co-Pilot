@@ -82,9 +82,20 @@ const HistoryView: React.FC<HistoryViewProps> = ({ userId, onClose }) => {
     console.log('🖼️ CLICK DETECTED! Opening full-screen for image at index:', index);
     console.log('📊 Total history items:', historyItems.length);
     console.log('📋 History item at index:', historyItems[index]);
+    console.log('🔄 Setting state - fullScreenImageIndex:', index, 'showFullScreenModal: true');
     
+    // Force state update with callback to ensure it happens
     setFullScreenImageIndex(index);
     setShowFullScreenModal(true);
+    
+    // Debug: Check state after a brief delay
+    setTimeout(() => {
+      console.log('⏰ State check after timeout:', {
+        showFullScreenModal,
+        fullScreenImageIndex,
+        historyItemsLength: historyItems.length
+      });
+    }, 100);
   };
 
   const handleFullScreenImageChange = (newIndex: number) => {
@@ -263,15 +274,37 @@ const HistoryView: React.FC<HistoryViewProps> = ({ userId, onClose }) => {
 
 
       {/* Full Screen Image Modal */}
-      {showFullScreenModal && (
-        <FullScreenImageModal
-          isOpen={showFullScreenModal}
-          onClose={() => setShowFullScreenModal(false)}
-          images={historyItems.map(convertToRefinedPromptItem)}
-          currentIndex={fullScreenImageIndex}
-          onImageChange={handleFullScreenImageChange}
-          onImageUpdate={handleFullScreenImageUpdate}
-        />
+      {showFullScreenModal && historyItems.length > 0 && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999 }}>
+          <FullScreenImageModal
+            isOpen={showFullScreenModal}
+            onClose={() => {
+              console.log('🚪 Closing full screen modal');
+              setShowFullScreenModal(false);
+            }}
+            images={historyItems.map(convertToRefinedPromptItem)}
+            currentIndex={fullScreenImageIndex}
+            onImageChange={handleFullScreenImageChange}
+            onImageUpdate={handleFullScreenImageUpdate}
+          />
+        </div>
+      )}
+      
+      {/* Debug info */}
+      {process.env.NODE_ENV === 'development' && (
+        <div style={{ 
+          position: 'fixed', 
+          top: 10, 
+          right: 10, 
+          background: 'rgba(0,0,0,0.8)', 
+          color: 'white', 
+          padding: '8px', 
+          fontSize: '12px',
+          zIndex: 10000,
+          borderRadius: '4px'
+        }}>
+          Modal: {showFullScreenModal ? 'OPEN' : 'CLOSED'} | Index: {fullScreenImageIndex} | Items: {historyItems.length}
+        </div>
       )}
 
       {/* Download Modal */}
