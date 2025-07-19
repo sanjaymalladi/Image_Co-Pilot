@@ -32,11 +32,11 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'Invalid JSON body' });
   }
 
-  const { 
-    prompt, 
-    input_image, 
-    output_format = 'png', 
-    num_inference_steps = 30 
+  const {
+    prompt,
+    input_image,
+    output_format = 'png',
+    num_inference_steps = 30
   } = body;
 
   if (!prompt || !input_image) {
@@ -83,7 +83,7 @@ export default async function handler(req: any, res: any) {
 
     if (!outputUrl) {
       console.error('Unexpected Replicate output format:', prediction);
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'Unexpected Replicate output format',
         details: 'The model returned an unexpected response format'
       });
@@ -92,31 +92,31 @@ export default async function handler(req: any, res: any) {
     res.status(200).json({ url: outputUrl });
   } catch (err: any) {
     console.error('Replicate edit error:', err);
-    
+
     // Handle specific Replicate errors
     if (err.message?.includes('safety')) {
-      return res.status(400).json({ 
-        error: 'Content safety violation', 
-        details: 'The edit request was blocked by safety filters' 
-      });
-    }
-    
-    if (err.message?.includes('quota') || err.message?.includes('limit')) {
-      return res.status(429).json({ 
-        error: 'Rate limit exceeded', 
-        details: 'Please try again later' 
-      });
-    }
-    
-    if (err.message?.includes('timeout')) {
-      return res.status(408).json({ 
-        error: 'Request timeout', 
-        details: 'The edit operation took too long to complete' 
+      return res.status(400).json({
+        error: 'Content safety violation',
+        details: 'The edit request was blocked by safety filters'
       });
     }
 
-    res.status(500).json({ 
-      error: 'Image edit failed', 
+    if (err.message?.includes('quota') || err.message?.includes('limit')) {
+      return res.status(429).json({
+        error: 'Rate limit exceeded',
+        details: 'Please try again later'
+      });
+    }
+
+    if (err.message?.includes('timeout')) {
+      return res.status(408).json({
+        error: 'Request timeout',
+        details: 'The edit operation took too long to complete'
+      });
+    }
+
+    res.status(500).json({
+      error: 'Image edit failed',
       details: err?.message || 'An unknown error occurred during image editing'
     });
   }

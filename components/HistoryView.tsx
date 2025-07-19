@@ -74,16 +74,22 @@ const HistoryView: React.FC<HistoryViewProps> = ({ userId, onClose }) => {
 
   // Full-screen modal handlers
   const handleImageFullScreen = (index: number) => {
-    console.log('🖼️ Opening full-screen for image at index:', index);
+    console.log('🖼️ CLICK DETECTED! Opening full-screen for image at index:', index);
     console.log('📊 Total history items:', historyItems.length);
     console.log('🎯 Current showFullScreenModal state:', showFullScreenModal);
     console.log('🔄 Setting showFullScreenModal to true');
+    console.log('📋 History item at index:', historyItems[index]);
+    
     setFullScreenImageIndex(index);
     setShowFullScreenModal(true);
 
     // Add a timeout to check if state was updated
     setTimeout(() => {
       console.log('⏰ After timeout - showFullScreenModal should be true');
+      console.log('🔍 Current state after timeout:', {
+        showFullScreenModal: showFullScreenModal,
+        fullScreenImageIndex: fullScreenImageIndex
+      });
     }, 100);
   };
 
@@ -264,14 +270,19 @@ const HistoryView: React.FC<HistoryViewProps> = ({ userId, onClose }) => {
 
       {/* Full Screen Image Modal */}
       {showFullScreenModal && (
-        <FullScreenImageModal
-          isOpen={showFullScreenModal}
-          onClose={() => setShowFullScreenModal(false)}
-          images={historyItems.map(convertToRefinedPromptItem)}
-          currentIndex={fullScreenImageIndex}
-          onImageChange={handleFullScreenImageChange}
-          onImageUpdate={handleFullScreenImageUpdate}
-        />
+        <div>
+          <div style={{ position: 'fixed', top: 0, left: 0, background: 'red', color: 'white', padding: '10px', zIndex: 9999 }}>
+            DEBUG: Modal should be visible! showFullScreenModal = {showFullScreenModal.toString()}
+          </div>
+          <FullScreenImageModal
+            isOpen={showFullScreenModal}
+            onClose={() => setShowFullScreenModal(false)}
+            images={historyItems.map(convertToRefinedPromptItem)}
+            currentIndex={fullScreenImageIndex}
+            onImageChange={handleFullScreenImageChange}
+            onImageUpdate={handleFullScreenImageUpdate}
+          />
+        </div>
       )}
 
       {/* Download Modal */}
