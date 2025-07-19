@@ -97,9 +97,11 @@ const App: React.FC = () => {
   const [selectedPacks, setSelectedPacks] = useState<{
     studio: boolean;
     lifestyle: boolean;
+    marketing: boolean;
   }>({
     studio: false,
-    lifestyle: false
+    lifestyle: false,
+    marketing: false
   });
 
   // Edit mode state
@@ -172,7 +174,7 @@ const App: React.FC = () => {
     setRefinedPrompts([]);
     setIsDevMode(false);
     setFirstImageUrl(null);
-    setSelectedPacks({ studio: false, lifestyle: false });
+    setSelectedPacks({ studio: false, lifestyle: false, marketing: false });
     // Reset progress tracking
     progressService.resetProgress();
   };
@@ -185,6 +187,30 @@ const App: React.FC = () => {
     const labels = getPhotoshootLabels(type);
     // Could add a toast notification here in the future
     console.log(`Switched to ${labels.mainItemName} photoshoot mode`);
+  }
+
+  // Generate viral marketing prompts for products
+  const generateMarketingPrompts = (basePrompts: any[], analysisData: FashionPromptData) => {
+    const productAnalysis = analysisData.garmentAnalysis; // This contains product analysis for product mode
+    
+    return [
+      {
+        title: "Marketing Viral Shot 1 - Dramatic Angle",
+        prompt: `${productAnalysis} VIRAL MARKETING SHOT: Extreme dramatic low-angle shot of the product, dynamic perspective with bold shadows and striking composition. Creative lighting with colored gels (purple, blue, orange). Product positioned as hero object with cinematic depth of field. High contrast, Instagram-worthy aesthetic. Professional commercial photography style that screams "viral content". Sharp focus on product with artistic blur. Trending social media composition.`
+      },
+      {
+        title: "Marketing Viral Shot 2 - Lifestyle Explosion", 
+        prompt: `${productAnalysis} VIRAL MARKETING SHOT: Product in explosive lifestyle scene - dynamic action shot with movement, energy, and excitement. Vibrant colors, multiple props creating visual chaos in the best way. Think "unboxing experience meets lifestyle porn". Bright, saturated colors. Product as centerpiece of aspirational lifestyle moment. Shot that makes viewers stop scrolling. High-energy composition with perfect lighting.`
+      },
+      {
+        title: "Marketing Viral Shot 3 - Minimalist Power",
+        prompt: `${productAnalysis} VIRAL MARKETING SHOT: Ultra-minimalist composition with maximum impact. Product floating in negative space with perfect shadows. Clean, modern aesthetic with subtle color gradients. Geometric composition that's instantly recognizable. Apple-style product photography meets artistic vision. Perfect symmetry and balance. Shot designed for maximum shareability and brand recognition.`
+      },
+      {
+        title: "Marketing Viral Shot 4 - Creative Chaos",
+        prompt: `${productAnalysis} VIRAL MARKETING SHOT: Creative explosion - product surrounded by related elements in artistic arrangement. Think "organized chaos" with perfect color coordination. Multiple textures, patterns, and complementary objects creating visual feast. Shot from unique angle that's never been done before. Instagram-story-worthy with built-in wow factor. Professional styling meets creative madness.`
+      }
+    ];
   }
 
   const clearSubsequentFashionStates = () => {
@@ -437,7 +463,7 @@ const App: React.FC = () => {
     setIsLoading(false);
   };
   
-  const handleSimpleModeGeneration = async (packType: 'studio' | 'lifestyle' | 'all') => {
+  const handleSimpleModeGeneration = async (packType: 'studio' | 'lifestyle' | 'marketing' | 'all') => {
     if (fashionGarmentFiles.length === 0) {
         const labels = getPhotoshootLabels(photoshootType);
         setError(labels.errorUploadMessage);
@@ -472,7 +498,18 @@ const App: React.FC = () => {
 
         // Step 3: Create optimized prompts
         progressService.updateStep('prompt-refinement', 'active');
-        const finalPrompts = await performQaAndGenerateStudioPrompts(garmentImageInputs, qaImageInput, analysisData, photoshootType);
+        let finalPrompts = await performQaAndGenerateStudioPrompts(garmentImageInputs, qaImageInput, analysisData, photoshootType);
+        
+        // Generate marketing prompts for product photoshoot type
+        if (photoshootType === 'product' && (packType === 'marketing' || packType === 'all')) {
+          const marketingPrompts = generateMarketingPrompts(finalPrompts, analysisData);
+          if (packType === 'marketing') {
+            finalPrompts = marketingPrompts;
+          } else {
+            finalPrompts = [...finalPrompts, ...marketingPrompts];
+          }
+        }
+        
         progressService.updateStep('prompt-refinement', 'completed');
         
         const promptsToGenerate = finalPrompts
@@ -546,6 +583,12 @@ const App: React.FC = () => {
               progressService.updateStep('lifestyle-generation', 'active');
             }
           }
+          if (packType === 'marketing' || packType === 'all') {
+            const hasMarketingRemaining = remaining.some(p => p.title.toLowerCase().includes('marketing'));
+            if (hasMarketingRemaining) {
+              progressService.updateStep('marketing-generation', 'active');
+            }
+          }
         }
         
         for (let i = 0; i < remaining.length; i++) {
@@ -580,6 +623,12 @@ const App: React.FC = () => {
           const hasLifestyleRemaining = remaining.some(p => p.title.toLowerCase().includes('lifestyle'));
           if (hasLifestyleRemaining) {
             progressService.updateStep('lifestyle-generation', 'completed');
+          }
+        }
+        if (packType === 'marketing' || packType === 'all') {
+          const hasMarketingRemaining = remaining.some(p => p.title.toLowerCase().includes('marketing'));
+          if (hasMarketingRemaining) {
+            progressService.updateStep('marketing-generation', 'completed');
           }
         }
 
@@ -787,7 +836,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handlePackSelection = (pack: 'studio' | 'lifestyle') => {
+  const handlePackSelection = (pack: 'studio' | 'lifestyle' | 'marketing') => {
     setSelectedPacks(prev => ({
       ...prev,
       [pack]: !prev[pack]
@@ -795,17 +844,21 @@ const App: React.FC = () => {
   };
 
   const handleGenerateSelectedPacks = async () => {
-    if (!selectedPacks.studio && !selectedPacks.lifestyle) {
+    if (!selectedPacks.studio && !selectedPacks.lifestyle && !selectedPacks.marketing) {
       setError('Please select at least one pack type');
       return;
     }
 
-    if (selectedPacks.studio && selectedPacks.lifestyle) {
+    const selectedCount = [selectedPacks.studio, selectedPacks.lifestyle, selectedPacks.marketing].filter(Boolean).length;
+    
+    if (selectedCount > 1) {
       await handleSimpleModeGeneration('all');
     } else if (selectedPacks.studio) {
       await handleSimpleModeGeneration('studio');
     } else if (selectedPacks.lifestyle) {
       await handleSimpleModeGeneration('lifestyle');
+    } else if (selectedPacks.marketing) {
+      await handleSimpleModeGeneration('marketing');
     }
   };
 
@@ -951,7 +1004,7 @@ const App: React.FC = () => {
                             Download
                           </Button>
                         )}
-                        {(
+                        {photoshootType === 'garment' && (
                      <Button 
                         onClick={() => copyRefinedPrompt(item.id)}
                         variant="secondary" 
@@ -1037,7 +1090,7 @@ const App: React.FC = () => {
             <h3 className="text-lg font-semibold text-secondary text-center">Generate Image Pack</h3>
             <p className="text-center text-sm text-slate-500">One click to get a full set of professional images.</p>
             <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-center gap-8">
+              <div className="flex items-center justify-center gap-6 flex-wrap">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -1056,10 +1109,21 @@ const App: React.FC = () => {
                   />
                   <span className="text-slate-700">Lifestyle Pack (4 Images)</span>
                 </label>
+                {photoshootType === 'product' && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedPacks.marketing}
+                      onChange={() => handlePackSelection('marketing')}
+                      className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500"
+                    />
+                    <span className="text-slate-700 font-semibold text-purple-600">🚀 Marketing Pack (4 Viral Shots)</span>
+                  </label>
+                )}
               </div>
               
               {/* Pack descriptions */}
-              {(selectedPacks.studio || selectedPacks.lifestyle) && (
+              {(selectedPacks.studio || selectedPacks.lifestyle || selectedPacks.marketing) && (
                 <div className="text-sm text-slate-600 space-y-1">
                   {selectedPacks.studio && (
                     <p><strong>Studio:</strong> {getPhotoshootLabels(photoshootType).studioDescription}</p>
@@ -1067,12 +1131,15 @@ const App: React.FC = () => {
                   {selectedPacks.lifestyle && (
                     <p><strong>Lifestyle:</strong> {getPhotoshootLabels(photoshootType).lifestyleDescription}</p>
                   )}
+                  {selectedPacks.marketing && photoshootType === 'product' && (
+                    <p><strong className="text-purple-600">🚀 Marketing:</strong> <span className="text-purple-600 font-medium">Crazy viral-worthy shots with dramatic angles, creative compositions, and eye-catching scenarios designed to go viral on social media</span></p>
+                  )}
                 </div>
               )}
               
               <Button
                 onClick={handleGenerateSelectedPacks}
-                disabled={isLoading || (!selectedPacks.studio && !selectedPacks.lifestyle)}
+                disabled={isLoading || (!selectedPacks.studio && !selectedPacks.lifestyle && !selectedPacks.marketing)}
                 className="w-full"
               >
                 {isLoading ? (
@@ -1086,8 +1153,12 @@ const App: React.FC = () => {
                             (~{progressService.formatDuration(
                               Math.max(0, progressService.getEstimatedTime(
                                 'simple',
-                                selectedPacks.studio && selectedPacks.lifestyle ? 'all' : 
-                                selectedPacks.studio ? 'studio' : 'lifestyle'
+                                (selectedPacks.studio && selectedPacks.lifestyle) || 
+                                (selectedPacks.studio && selectedPacks.marketing) || 
+                                (selectedPacks.lifestyle && selectedPacks.marketing) ||
+                                (selectedPacks.studio && selectedPacks.lifestyle && selectedPacks.marketing) ? 'all' : 
+                                selectedPacks.studio ? 'studio' : 
+                                selectedPacks.lifestyle ? 'lifestyle' : 'marketing'
                               ) - generationProgress.elapsedTime)
                             )} left)
                           </span>
@@ -1104,8 +1175,12 @@ const App: React.FC = () => {
                         (~{progressService.formatDuration(
                           progressService.getEstimatedTime(
                             'simple',
-                            selectedPacks.studio && selectedPacks.lifestyle ? 'all' : 
-                            selectedPacks.studio ? 'studio' : 'lifestyle'
+                            (selectedPacks.studio && selectedPacks.lifestyle) || 
+                            (selectedPacks.studio && selectedPacks.marketing) || 
+                            (selectedPacks.lifestyle && selectedPacks.marketing) ||
+                            (selectedPacks.studio && selectedPacks.lifestyle && selectedPacks.marketing) ? 'all' : 
+                            selectedPacks.studio ? 'studio' : 
+                            selectedPacks.lifestyle ? 'lifestyle' : 'marketing'
                           )
                         )})
                       </span>

@@ -9,7 +9,7 @@ export interface GenerationProgress {
 }
 
 export type GenerationMode = 'simple' | 'advanced';
-export type PackType = 'studio' | 'lifestyle' | 'all';
+export type PackType = 'studio' | 'lifestyle' | 'marketing' | 'all';
 
 export class ProgressService {
   private progressCallbacks: ((progress: GenerationProgress) => void)[] = [];
@@ -84,6 +84,18 @@ export class ProgressService {
           id: 'lifestyle-generation',
           label: lifestyleLabel,
           estimatedDuration: lifestyleDuration,
+          status: 'pending'
+        });
+      }
+
+      if (packType === 'marketing' || packType === 'all') {
+        const marketingLabel = packType === 'all' ? 'Generating viral marketing shots' : 'Generating viral marketing shots';
+        const marketingDuration = 60; // 4 images × 15s each
+        
+        baseSteps.push({
+          id: 'marketing-generation',
+          label: marketingLabel,
+          estimatedDuration: marketingDuration,
           status: 'pending'
         });
       }

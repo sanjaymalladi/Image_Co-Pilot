@@ -9,6 +9,7 @@ export interface PhotoshootLabels {
   mainItemName: string; // "garment" or "product"
   studioDescription: string;
   lifestyleDescription: string;
+  marketingDescription: string;
   generateButtonText: string;
   analysisButtonText: string;
   qaButtonText: string;
@@ -45,6 +46,7 @@ export const getPhotoshootLabels = (type: PhotoshootType): PhotoshootLabels => {
       mainItemName: 'garment',
       studioDescription: 'Professional studio shots with clean backgrounds',
       lifestyleDescription: 'Lifestyle shots showing the garment in real-world contexts',
+      marketingDescription: 'Creative marketing shots for fashion campaigns',
       generateButtonText: 'Generate Garment Analysis',
       analysisButtonText: 'Analyze Garment',
       qaButtonText: 'Generate QA & Refine Prompts',
@@ -58,6 +60,7 @@ export const getPhotoshootLabels = (type: PhotoshootType): PhotoshootLabels => {
       mainItemName: 'product',
       studioDescription: 'Professional studio shots highlighting product features',
       lifestyleDescription: 'Lifestyle shots showing the product in use scenarios',
+      marketingDescription: 'Viral-worthy marketing shots with dramatic angles and creative compositions',
       generateButtonText: 'Generate Product Analysis',
       analysisButtonText: 'Analyze Product',
       qaButtonText: 'Generate QA & Refine Prompts',
