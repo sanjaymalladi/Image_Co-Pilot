@@ -60,7 +60,7 @@ const App: React.FC = () => {
         title,
         aspectRatio,
         metadata: {
-          model: 'black-forest-labs/flux-kontext-dev',
+          model: 'flux-kontext-apps/multi-image-list',
           originalPrompt: prompt,
         },
       });

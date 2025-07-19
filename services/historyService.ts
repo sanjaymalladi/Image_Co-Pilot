@@ -1,6 +1,7 @@
 import { ConvexReactClient } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { Id } from "../convex/_generated/dataModel";
+import { createImageStorageService, ImageStorageService } from "./imageStorageService";
 
 export interface HistoryItem {
   _id: Id<"history">;
@@ -41,7 +42,11 @@ export interface SaveHistoryItemRequest {
 }
 
 export class HistoryService {
-  constructor(private convex: ConvexReactClient) {}
+  private imageStorageService: ImageStorageService;
+
+  constructor(private convex: ConvexReactClient) {
+    this.imageStorageService = createImageStorageService(convex);
+  }
 
   /**
    * Get all history items for a user, ordered by creation date (newest first)
@@ -71,10 +76,33 @@ export class HistoryService {
 
   /**
    * Save a new history item
+   * Automatically stores temporary images permanently in Convex
    */
   async saveToHistory(item: SaveHistoryItemRequest): Promise<Id<"history">> {
     try {
-      const historyId = await this.convex.mutation(api.history.saveHistoryItem, item);
+      let finalImageUrl = item.imageUrl;
+      
+      // Check if the image URL is temporary (from Replicate) and store it permanently
+      if (this.imageStorageService.isTemporaryUrl(item.imageUrl)) {
+        console.log('Storing temporary image permanently:', item.imageUrl);
+        try {
+          finalImageUrl = await this.imageStorageService.storeImageFromUrl(
+            item.imageUrl,
+            `${item.title || 'image'}_${Date.now()}.png`
+          );
+          console.log('Image stored permanently:', finalImageUrl);
+        } catch (storageError) {
+          console.warn('Failed to store image permanently, using original URL:', storageError);
+          // Continue with original URL if storage fails
+        }
+      }
+
+      // Save to history with the permanent URL
+      const historyId = await this.convex.mutation(api.history.saveHistoryItem, {
+        ...item,
+        imageUrl: finalImageUrl,
+      });
+      
       return historyId;
     } catch (error) {
       console.error('Failed to save to history:', error);
@@ -96,6 +124,7 @@ export class HistoryService {
 
   /**
    * Update a history item with edit history
+   * Automatically stores temporary edit result images permanently
    */
   async updateHistoryWithEdit(
     id: Id<"history">, 
@@ -106,9 +135,36 @@ export class HistoryService {
     }>
   ): Promise<void> {
     try {
+      // Process edit history to store temporary URLs permanently
+      const processedEditHistory = await Promise.all(
+        editHistory.map(async (edit) => {
+          let finalResultUrl = edit.resultUrl;
+          
+          // Check if the result URL is temporary and store it permanently
+          if (this.imageStorageService.isTemporaryUrl(edit.resultUrl)) {
+            console.log('Storing temporary edit result permanently:', edit.resultUrl);
+            try {
+              finalResultUrl = await this.imageStorageService.storeImageFromUrl(
+                edit.resultUrl,
+                `edit_${edit.timestamp}.png`
+              );
+              console.log('Edit result stored permanently:', finalResultUrl);
+            } catch (storageError) {
+              console.warn('Failed to store edit result permanently, using original URL:', storageError);
+              // Continue with original URL if storage fails
+            }
+          }
+          
+          return {
+            ...edit,
+            resultUrl: finalResultUrl,
+          };
+        })
+      );
+
       await this.convex.mutation(api.history.updateHistoryItem, { 
         id, 
-        editHistory 
+        editHistory: processedEditHistory 
       });
     } catch (error) {
       console.error('Failed to update history item:', error);

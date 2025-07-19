@@ -59,14 +59,14 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'At least one valid input image is required' });
   }
 
-  const MODEL_NAME = 'black-forest-labs/flux-kontext-dev';
+  const MODEL_NAME = 'flux-kontext-apps/multi-image-list';
 
   try {
     const prediction = await replicate.run(MODEL_NAME, {
       input: {
         prompt,
         aspect_ratio,
-        input_image: processedUrls[0], // Use first image as primary input
+        input_images: processedUrls,
         output_format: 'png',
         safety_tolerance: 2,
       },

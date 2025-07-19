@@ -73,24 +73,18 @@ const HistoryView: React.FC<HistoryViewProps> = ({ userId, onClose }) => {
   });
 
   // Full-screen modal handlers
-  const handleImageFullScreen = (index: number) => {
+  const handleImageFullScreen = (index: number, event?: React.MouseEvent) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
     console.log('🖼️ CLICK DETECTED! Opening full-screen for image at index:', index);
     console.log('📊 Total history items:', historyItems.length);
-    console.log('🎯 Current showFullScreenModal state:', showFullScreenModal);
-    console.log('🔄 Setting showFullScreenModal to true');
     console.log('📋 History item at index:', historyItems[index]);
     
     setFullScreenImageIndex(index);
     setShowFullScreenModal(true);
-
-    // Add a timeout to check if state was updated
-    setTimeout(() => {
-      console.log('⏰ After timeout - showFullScreenModal should be true');
-      console.log('🔍 Current state after timeout:', {
-        showFullScreenModal: showFullScreenModal,
-        fullScreenImageIndex: fullScreenImageIndex
-      });
-    }, 100);
   };
 
   const handleFullScreenImageChange = (newIndex: number) => {
@@ -195,7 +189,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ userId, onClose }) => {
                       src={item.imageUrl}
                       alt={item.title || 'Generated image'}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200 cursor-pointer"
-                      onClick={() => handleImageFullScreen(index)}
+                      onClick={(e) => handleImageFullScreen(index, e)}
                       onError={(e) => {
                         e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMTMuMDkgOC4yNkwyMCA5TDEzLjA5IDE1Ljc0TDEyIDIyTDEwLjkxIDE1Ljc0TDQgOUwxMC45MSA4LjI2TDEyIDJaIiBzdHJva2U9IiM5Q0E3QjciIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPgo=';
                       }}
@@ -270,19 +264,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({ userId, onClose }) => {
 
       {/* Full Screen Image Modal */}
       {showFullScreenModal && (
-        <div>
-          <div style={{ position: 'fixed', top: 0, left: 0, background: 'red', color: 'white', padding: '10px', zIndex: 9999 }}>
-            DEBUG: Modal should be visible! showFullScreenModal = {showFullScreenModal.toString()}
-          </div>
-          <FullScreenImageModal
-            isOpen={showFullScreenModal}
-            onClose={() => setShowFullScreenModal(false)}
-            images={historyItems.map(convertToRefinedPromptItem)}
-            currentIndex={fullScreenImageIndex}
-            onImageChange={handleFullScreenImageChange}
-            onImageUpdate={handleFullScreenImageUpdate}
-          />
-        </div>
+        <FullScreenImageModal
+          isOpen={showFullScreenModal}
+          onClose={() => setShowFullScreenModal(false)}
+          images={historyItems.map(convertToRefinedPromptItem)}
+          currentIndex={fullScreenImageIndex}
+          onImageChange={handleFullScreenImageChange}
+          onImageUpdate={handleFullScreenImageUpdate}
+        />
       )}
 
       {/* Download Modal */}

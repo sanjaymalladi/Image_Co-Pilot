@@ -160,7 +160,7 @@ export const FullScreenImageModal: React.FC<FullScreenImageModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-95 z-[60] flex flex-col">
+    <div className="fixed inset-0 bg-black bg-opacity-95 z-[70] flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between p-4 bg-black bg-opacity-50 backdrop-blur-sm">
         <div className="flex items-center space-x-4">
@@ -282,8 +282,13 @@ export const FullScreenImageModal: React.FC<FullScreenImageModalProps> = ({
               ref={imageRef}
               src={currentImage.imageUrl}
               alt={currentImage.title}
-              className="max-w-none transition-transform duration-200"
+              className="transition-transform duration-200"
               style={{
+                maxWidth: zoom === 1 ? '90vw' : 'none',
+                maxHeight: zoom === 1 ? '90vh' : 'none',
+                width: zoom === 1 ? 'auto' : 'auto',
+                height: zoom === 1 ? 'auto' : 'auto',
+                objectFit: 'contain',
                 transform: `scale(${zoom}) translate(${panPosition.x / zoom}px, ${panPosition.y / zoom}px)`,
                 cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
               }}
