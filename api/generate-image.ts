@@ -66,7 +66,7 @@ export default async function handler(req: any, res: any) {
       input: {
         prompt,
         aspect_ratio,
-        input_images: processedUrls,
+        input_image: processedUrls[0], // Use first image as primary input
         output_format: 'png',
         safety_tolerance: 2,
       },
